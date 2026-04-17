@@ -121,19 +121,7 @@ class HomeFragment : Fragment() {
             val pushUrl = "$base/push/$key"
             val webhookUrl = "$base/webhook/$key"
 
-            val items = arrayOf(
-                "Push 链接   $pushUrl",
-                "Webhook 链接   $webhookUrl"
-            )
-            android.app.AlertDialog.Builder(requireContext())
-                .setTitle("复制链接")
-                .setItems(items) { _, which ->
-                    when (which) {
-                        0 -> copyToClipboard("Push URL", pushUrl)
-                        1 -> copyToClipboard("Webhook URL", webhookUrl)
-                    }
-                }
-                .show()
+            showCopyOptionsDialog(key, pushUrl, webhookUrl)
         }
 
         binding.cardAccessibility.setOnClickListener {
@@ -163,6 +151,60 @@ class HomeFragment : Fragment() {
         // Server URL configuration moved to SettingsFragment
 
 
+    }
+
+    private fun showCopyOptionsDialog(key: String, pushUrl: String, webhookUrl: String) {
+        val density = resources.displayMetrics.density
+        val container = android.widget.LinearLayout(requireContext()).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(0, (8 * density).toInt(), 0, 0)
+        }
+
+        val options = listOf(
+            "Push 链接" to pushUrl,
+            "Webhook 链接" to webhookUrl,
+            "仅复制 Key" to key
+        )
+
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_clean, null)
+        val tvTitle = dialogView.findViewById<android.widget.TextView>(R.id.dialogTitle)
+        val tvMessage = dialogView.findViewById<android.widget.TextView>(R.id.dialogMessage)
+        val btnPositive = dialogView.findViewById<android.widget.TextView>(R.id.btnPositive)
+        val btnNegative = dialogView.findViewById<android.widget.TextView>(R.id.btnNegative)
+        val customContainer = dialogView.findViewById<android.widget.FrameLayout>(R.id.dialogCustomContainer)
+
+        tvTitle.text = "复制链接"
+        tvMessage.visibility = View.GONE
+        btnPositive.visibility = View.GONE
+        btnNegative.text = "关闭"
+
+        val alertDialog = androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setView(dialogView)
+            .create()
+        alertDialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        for ((label, value) in options) {
+            val item = android.widget.TextView(requireContext()).apply {
+                text = "$label\n$value"
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextColor(resources.getColor(R.color.clean_text_primary, null))
+                setPadding(0, (12 * density).toInt(), 0, (12 * density).toInt())
+                setOnClickListener {
+                    copyToClipboard(label, value)
+                    alertDialog.dismiss()
+                }
+                background = requireContext().obtainStyledAttributes(intArrayOf(android.R.attr.selectableItemBackground)).run {
+                    val d = getDrawable(0); recycle(); d
+                }
+            }
+            container.addView(item)
+        }
+
+        customContainer.addView(container)
+        customContainer.visibility = View.VISIBLE
+
+        btnNegative.setOnClickListener { alertDialog.dismiss() }
+        alertDialog.show()
     }
 
     private fun showPrivacyDialog() {

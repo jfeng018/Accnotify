@@ -211,7 +211,13 @@ func (h *WebhookHandler) HandleGitHubWebhook(c *gin.Context) {
 	}
 
 	title := "GitHub"
-	body := h.formatGitHubWebhook(&webhook, bodyBytes, eventType)
+	formatted := h.formatGitHubWebhook(&webhook, bodyBytes, eventType)
+
+	// Append raw JSON for client "view raw" toggle
+	var rawJSON map[string]interface{}
+	json.Unmarshal(bodyBytes, &rawJSON)
+	fullJSON, _ := json.MarshalIndent(rawJSON, "", "  ")
+	body := fmt.Sprintf("%s\n\n--- 完整数据 ---\n%s", formatted, string(fullJSON))
 
 	h.sendWebhookMessage(deviceKey, device, title, body, "", c)
 }
@@ -236,14 +242,27 @@ func (h *WebhookHandler) HandleGitLabWebhook(c *gin.Context) {
 		return
 	}
 
+	// Read raw body first
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		h.sendWebhookMessage(deviceKey, device, "GitLab", "Failed to read webhook body", "", c)
+		return
+	}
+
 	var webhook model.GitLabWebhook
-	if err := c.ShouldBindJSON(&webhook); err != nil {
+	if err := json.Unmarshal(bodyBytes, &webhook); err != nil {
 		h.sendWebhookMessage(deviceKey, device, "GitLab", "Invalid GitLab webhook format", "", c)
 		return
 	}
 
 	title := "GitLab"
-	body := h.formatGitLabWebhook(&webhook)
+	formatted := h.formatGitLabWebhook(&webhook)
+
+	// Append raw JSON for client "view raw" toggle
+	var rawJSON map[string]interface{}
+	json.Unmarshal(bodyBytes, &rawJSON)
+	fullJSON, _ := json.MarshalIndent(rawJSON, "", "  ")
+	body := fmt.Sprintf("%s\n\n--- 完整数据 ---\n%s", formatted, string(fullJSON))
 
 	h.sendWebhookMessage(deviceKey, device, title, body, "", c)
 }
@@ -268,14 +287,27 @@ func (h *WebhookHandler) HandleDockerHubWebhook(c *gin.Context) {
 		return
 	}
 
+	// Read raw body first
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		h.sendWebhookMessage(deviceKey, device, "Docker Hub", "Failed to read webhook body", "", c)
+		return
+	}
+
 	var webhook model.DockerHubWebhook
-	if err := c.ShouldBindJSON(&webhook); err != nil {
+	if err := json.Unmarshal(bodyBytes, &webhook); err != nil {
 		h.sendWebhookMessage(deviceKey, device, "Docker Hub", "Invalid Docker Hub webhook format", "", c)
 		return
 	}
 
 	title := "Docker Hub"
-	body := h.formatDockerHubWebhook(&webhook)
+	formatted := h.formatDockerHubWebhook(&webhook)
+
+	// Append raw JSON for client "view raw" toggle
+	var rawJSON map[string]interface{}
+	json.Unmarshal(bodyBytes, &rawJSON)
+	fullJSON, _ := json.MarshalIndent(rawJSON, "", "  ")
+	body := fmt.Sprintf("%s\n\n--- 完整数据 ---\n%s", formatted, string(fullJSON))
 
 	h.sendWebhookMessage(deviceKey, device, title, body, "", c)
 }
@@ -300,15 +332,28 @@ func (h *WebhookHandler) HandleGiteaWebhook(c *gin.Context) {
 		return
 	}
 
+	// Read raw body first
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		h.sendWebhookMessage(deviceKey, device, "Gitea", "Failed to read webhook body", "", c)
+		return
+	}
+
 	var webhook model.GiteaWebhook
-	if err := c.ShouldBindJSON(&webhook); err != nil {
+	if err := json.Unmarshal(bodyBytes, &webhook); err != nil {
 		h.sendWebhookMessage(deviceKey, device, "Gitea", "Invalid Gitea webhook format", "", c)
 		return
 	}
 
 	eventType := c.GetHeader("X-Gitea-Event")
 	title := "Gitea"
-	body := h.formatGiteaWebhook(&webhook, eventType)
+	formatted := h.formatGiteaWebhook(&webhook, eventType)
+
+	// Append raw JSON for client "view raw" toggle
+	var rawJSON map[string]interface{}
+	json.Unmarshal(bodyBytes, &rawJSON)
+	fullJSON, _ := json.MarshalIndent(rawJSON, "", "  ")
+	body := fmt.Sprintf("%s\n\n--- 完整数据 ---\n%s", formatted, string(fullJSON))
 
 	h.sendWebhookMessage(deviceKey, device, title, body, "", c)
 }
@@ -399,7 +444,7 @@ func (h *WebhookHandler) formatGitHubWebhook(w *model.GitHubWebhook, rawBody []b
 	switch eventType {
 	case "push":
 		branch := strings.TrimPrefix(w.Ref, "refs/heads/")
-		sb.WriteString(fmt.Sprintf("【Push】%s\n", w.Repository.FullName))
+		sb.WriteString(fmt.Sprintf("【Push】[%s](%s)\n", w.Repository.FullName, w.Repository.HTMLURL))
 		sb.WriteString(fmt.Sprintf("分支: %s\n", branch))
 		if !w.Forced {
 			if commitMsg != "" {
@@ -410,10 +455,9 @@ func (h *WebhookHandler) formatGitHubWebhook(w *model.GitHubWebhook, rawBody []b
 		}
 		sb.WriteString(fmt.Sprintf("推送者: %s", w.Pusher.Name))
 	case "ping":
-		sb.WriteString(fmt.Sprintf("【Ping】%s\n", w.Repository.FullName))
+		sb.WriteString(fmt.Sprintf("【Ping】[%s](%s)\n", w.Repository.FullName, w.Repository.HTMLURL))
 	case "":
-		// No event type header - format as generic push info
-		sb.WriteString(fmt.Sprintf("【Event】%s\n", w.Repository.FullName))
+		sb.WriteString(fmt.Sprintf("【Event】[%s](%s)\n", w.Repository.FullName, w.Repository.HTMLURL))
 		if commitMsg != "" {
 			sb.WriteString(fmt.Sprintf("提交: %s\n", commitMsg))
 		}
@@ -421,7 +465,7 @@ func (h *WebhookHandler) formatGitHubWebhook(w *model.GitHubWebhook, rawBody []b
 			sb.WriteString(fmt.Sprintf("推送者: %s", w.Pusher.Name))
 		}
 	default:
-		sb.WriteString(fmt.Sprintf("【%s】%s\n", eventType, w.Repository.FullName))
+		sb.WriteString(fmt.Sprintf("【%s】[%s](%s)\n", eventType, w.Repository.FullName, w.Repository.HTMLURL))
 		if commitMsg != "" {
 			sb.WriteString(fmt.Sprintf("提交: %s\n", commitMsg))
 		}
@@ -437,14 +481,14 @@ func (h *WebhookHandler) formatGitLabWebhook(w *model.GitLabWebhook) string {
 	switch w.ObjectKind {
 	case "push":
 		branch := strings.TrimPrefix(w.Ref, "refs/heads/")
-		sb.WriteString(fmt.Sprintf("【Push】%s\n", w.Project.Name))
+		sb.WriteString(fmt.Sprintf("【Push】[%s](%s)\n", w.Project.Name, w.Project.WebURL))
 		sb.WriteString(fmt.Sprintf("分支: %s\n", branch))
 		sb.WriteString(fmt.Sprintf("提交: %s\n", w.Commit.Message))
 		sb.WriteString(fmt.Sprintf("推送者: %s", w.UserName))
 	case "merge_request":
-		sb.WriteString(fmt.Sprintf("【Merge Request】%s\n", w.Project.Name))
+		sb.WriteString(fmt.Sprintf("【Merge Request】[%s](%s)\n", w.Project.Name, w.Project.WebURL))
 	default:
-		sb.WriteString(fmt.Sprintf("【%s】%s\n", w.ObjectKind, w.Project.Name))
+		sb.WriteString(fmt.Sprintf("【%s】[%s](%s)\n", w.ObjectKind, w.Project.Name, w.Project.WebURL))
 	}
 
 	return sb.String()
@@ -454,7 +498,7 @@ func (h *WebhookHandler) formatGitLabWebhook(w *model.GitLabWebhook) string {
 func (h *WebhookHandler) formatDockerHubWebhook(w *model.DockerHubWebhook) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("【Docker Hub】%s\n", w.Repository.RepoName))
+	sb.WriteString(fmt.Sprintf("【Docker Hub】[%s](%s)\n", w.Repository.RepoName, w.Repository.RepoURL))
 	sb.WriteString(fmt.Sprintf("标签: %s\n", w.PushData.Tag))
 	sb.WriteString(fmt.Sprintf("推送者: %s", w.PushData.Pusher))
 
@@ -468,12 +512,12 @@ func (h *WebhookHandler) formatGiteaWebhook(w *model.GiteaWebhook, eventType str
 	switch eventType {
 	case "push":
 		branch := strings.TrimPrefix(w.Ref, "refs/heads/")
-		sb.WriteString(fmt.Sprintf("【Push】%s\n", w.Repository.FullName))
+		sb.WriteString(fmt.Sprintf("【Push】[%s](%s)\n", w.Repository.FullName, w.Repository.HTMLURL))
 		sb.WriteString(fmt.Sprintf("分支: %s\n", branch))
 		sb.WriteString(fmt.Sprintf("提交: %s\n", w.HeadCommit.Message))
 		sb.WriteString(fmt.Sprintf("推送者: %s", w.Pusher.Name))
 	default:
-		sb.WriteString(fmt.Sprintf("【%s】%s\n", eventType, w.Repository.FullName))
+		sb.WriteString(fmt.Sprintf("【%s】[%s](%s)\n", eventType, w.Repository.FullName, w.Repository.HTMLURL))
 	}
 
 	return sb.String()

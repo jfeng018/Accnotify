@@ -564,7 +564,9 @@
       <!-- ── Image tab ── -->
       <div class="tab-panel" id="tab-image">
         <div class="hint">
-          推送带图片的通知。图片可以是远程 URL 或本地文件（Base64 编码）。
+          推送带图片的通知。支持两种方式：<br>
+          1. <b>图片 URL</b>：服务端直接传输链接，客户端下载展示（推荐）<br>
+          2. <b>本地上传</b>：编码为 Base64 嵌入消息体（适合小图片）
         </div>
         <div class="field">
           <label>标题 (title)</label>
@@ -579,7 +581,7 @@
           <div class="section-label" style="margin-bottom:10px">图片来源</div>
           <!-- URL mode -->
           <div class="field">
-            <label>图片 URL（远程）</label>
+            <label>图片 URL（推荐，服务端仅传输链接不下载）</label>
             <input type="text" id="imgUrl" placeholder="https://example.com/photo.jpg" oninput="onImgUrlInput()">
           </div>
           <div style="text-align:center; color:var(--muted); font-size:13px; margin: 8px 0;">— 或 —</div>
@@ -638,7 +640,9 @@
       <div class="tab-panel" id="tab-simple">
         <div class="hint">
           GET 请求推送，兼容 Bark URL 格式，无需构造 JSON 请求体：<br>
-          <code>/push/:device_key/:title/:body</code>
+          <code>/push/:device_key/:title/:body</code><br>
+          支持 Query 参数：<code>?group=xxx&amp;icon=xxx&amp;url=xxx&amp;image=xxx&amp;sound=xxx</code><br>
+          POST 也支持 form-encoded 和 query 参数覆盖，方便从 Bark 脚本迁移。
         </div>
         <div class="field">
           <label>标题</label>
@@ -779,9 +783,10 @@ const WH_TEMPLATES = {
     path: '/webhook/DEVICE_KEY',
     payload: {
       title: '系统监控告警',
-      body: '服务器 web-01 的 CPU 使用率超过 90%，持续 5 分钟。\\n\\n当前负载：12.5\\n内存使用：87%\\n磁盘 IO：高',
+      body: '服务器 web-01 的 CPU 使用率超过 90%，持续 5 分钟。\n\n当前负载：12.5\n内存使用：87%\n磁盘 IO：高',
       group: '监控',
-      url: 'https://monitor.example.com/alerts/12345'
+      url: 'https://monitor.example.com/alerts/12345',
+      image: 'https://via.placeholder.com/200x100.png?text=Alert'
     }
   },
   github: {

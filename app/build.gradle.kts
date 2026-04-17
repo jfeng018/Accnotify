@@ -12,8 +12,8 @@ android {
         applicationId = "com.trah.accnotify"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.1.0"
+        versionCode = 3
+        versionName = "0.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -100,6 +100,7 @@ dependencies {
     // Markwon for Markdown rendering
     implementation("io.noties.markwon:core:4.6.2")
     implementation("io.noties.markwon:html:4.6.2")
+    implementation("io.noties.markwon:linkify:4.6.2")
 
     // Lottie - 动画库 (保留，体积小且效果好)
     implementation("com.airbnb.android:lottie:6.3.0")

@@ -30,6 +30,7 @@ func NewPushHandler(storage *storage.SQLiteStorage, hub *Hub) *PushHandler {
 }
 
 // HandlePush handles POST /push/:device_key
+// Supports JSON body, form-encoded body, and query parameters (Bark-compatible)
 func (h *PushHandler) HandlePush(c *gin.Context) {
 	deviceKey := c.Param("device_key")
 	if deviceKey == "" {
@@ -57,14 +58,52 @@ func (h *PushHandler) HandlePush(c *gin.Context) {
 		return
 	}
 
-	// Parse request
+	// Parse request - support JSON, form, and query params (Bark-compatible)
 	var req model.PushRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, model.PushResponse{
-			Success: false,
-			Error:   "Invalid request body",
-		})
-		return
+	contentType := c.GetHeader("Content-Type")
+	if strings.Contains(contentType, "application/json") {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, model.PushResponse{
+				Success: false,
+				Error:   "Invalid request body",
+			})
+			return
+		}
+	} else if strings.Contains(contentType, "application/x-www-form-urlencoded") || strings.Contains(contentType, "multipart/form-data") {
+		// Form-encoded (Bark-compatible)
+		req.Title = c.PostForm("title")
+		req.Body = c.PostForm("body")
+		req.Group = c.PostForm("group")
+		req.Icon = c.PostForm("icon")
+		req.URL = c.PostForm("url")
+		req.Image = c.PostForm("image")
+		req.Sound = c.PostForm("sound")
+	} else {
+		// Try JSON first, fallback to empty
+		_ = c.ShouldBindJSON(&req)
+	}
+
+	// Override with query parameters if present (Bark-compatible)
+	if v := c.Query("title"); v != "" {
+		req.Title = v
+	}
+	if v := c.Query("body"); v != "" {
+		req.Body = v
+	}
+	if v := c.Query("group"); v != "" {
+		req.Group = v
+	}
+	if v := c.Query("icon"); v != "" {
+		req.Icon = v
+	}
+	if v := c.Query("url"); v != "" {
+		req.URL = v
+	}
+	if v := c.Query("image"); v != "" {
+		req.Image = v
+	}
+	if v := c.Query("sound"); v != "" {
+		req.Sound = v
 	}
 
 	// Generate message ID
@@ -184,6 +223,18 @@ func (h *PushHandler) HandleSimplePush(c *gin.Context) {
 		Body:      body,
 	}
 
+	// Support additional query params for GET requests (Bark-compatible)
+	group := c.Query("group")
+	icon := c.Query("icon")
+	url := c.Query("url")
+	image := c.Query("image")
+	sound := c.Query("sound")
+	msg.Group = group
+	msg.Icon = icon
+	msg.URL = url
+	msg.Image = image
+	msg.Sound = sound
+
 	// Encrypt if device has public key
 	var encryptedContent string
 	if device.PublicKey != "" {
@@ -192,6 +243,11 @@ func (h *PushHandler) HandleSimplePush(c *gin.Context) {
 			payload := map[string]interface{}{
 				"title": title,
 				"body":  body,
+				"group": group,
+				"icon":  icon,
+				"url":   url,
+				"image": image,
+				"sound": sound,
 			}
 			payloadBytes, _ := json.Marshal(payload)
 			encryptedContent, _ = h.crypto.EncryptMessage(publicKey, payloadBytes)
@@ -214,6 +270,11 @@ func (h *PushHandler) HandleSimplePush(c *gin.Context) {
 		Data: map[string]interface{}{
 			"title":             title,
 			"body":              body,
+			"group":             group,
+			"icon":              icon,
+			"url":               url,
+			"image":             image,
+			"sound":             sound,
 			"encrypted_content": encryptedContent,
 		},
 	}

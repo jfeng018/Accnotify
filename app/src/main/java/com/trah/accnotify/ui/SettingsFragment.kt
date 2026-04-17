@@ -77,19 +77,34 @@ class SettingsFragment : Fragment() {
                         } else {
                             // Up to date
                             binding.tvVersion.text = "已是最新版本 ($currentVersion)"
-                            Toast.makeText(context, "当前已是最新版本", Toast.LENGTH_SHORT).show()
+                            showCleanDialog(
+                                title = "检查更新",
+                                message = "当前已是最新版本 ($currentVersion)",
+                                positiveText = "好的",
+                                negativeText = null
+                            )
                         }
                     } else {
                         // Failed to check
                         binding.tvVersion.text = originalText
-                        Toast.makeText(context, "检查更新失败，请稍后再试", Toast.LENGTH_SHORT).show()
+                        showCleanDialog(
+                            title = "检查更新",
+                            message = "检查更新失败，请稍后再试",
+                            positiveText = "好的",
+                            negativeText = null
+                        )
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     binding.btnCheckUpdate.isEnabled = true
                     binding.tvVersion.text = originalText
-                    Toast.makeText(context, "检查更新失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                    showCleanDialog(
+                        title = "检查更新",
+                        message = "检查更新失败: ${e.message}",
+                        positiveText = "好的",
+                        negativeText = null
+                    )
                 }
             }
         }
@@ -135,15 +150,15 @@ class SettingsFragment : Fragment() {
     }
 
     private fun showUpdateDialog(latestVersion: String) {
-        AlertDialog.Builder(requireContext())
-            .setTitle("发现新版本")
-            .setMessage("当前版本: ${BuildConfig.VERSION_NAME}\n最新版本: $latestVersion\n\n是否前往 GitHub 下载？")
-            .setPositiveButton("前往下载") { _, _ ->
+        showCleanDialog(
+            title = "发现新版本",
+            message = "当前版本: ${BuildConfig.VERSION_NAME}\n最新版本: $latestVersion\n\n是否前往 GitHub 下载？",
+            positiveText = "前往下载",
+            onPositive = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/trah01/Accnotify/releases"))
                 startActivity(intent)
             }
-            .setNegativeButton("取消", null)
-            .show()
+        )
     }
 
     private fun setupServerList() {

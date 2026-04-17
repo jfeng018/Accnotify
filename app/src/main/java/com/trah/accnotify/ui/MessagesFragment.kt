@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import io.noties.markwon.Markwon
 import io.noties.markwon.SoftBreakAddsNewLinePlugin
+import io.noties.markwon.linkify.LinkifyPlugin
+import io.noties.markwon.movement.MovementMethodPlugin
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -146,9 +148,11 @@ class MessagesFragment : Fragment() {
         tvTitle.text = message.title ?: "Accnotify"
         tvTime.text = dateFormat.format(message.timestamp)
         
-        // 格式化消息内容（使用 Markwon 渲染 Markdown，启用 SoftBreak 保留换行）
+        // 格式化消息内容（使用 Markwon 渲染 Markdown，启用 SoftBreak 保留换行，启用链接点击）
         val markwon = Markwon.builder(requireContext())
             .usePlugin(SoftBreakAddsNewLinePlugin.create())
+            .usePlugin(LinkifyPlugin.create())
+            .usePlugin(MovementMethodPlugin.create())
             .build()
         
         val body = message.body ?: ""
@@ -229,41 +233,85 @@ class MessagesFragment : Fragment() {
             }
         }
 
-        // Display base64 image if present
+        // Display image if present (supports both base64 and URL)
         if (!message.image.isNullOrEmpty()) {
-            try {
-                // Strip data URI prefix if present (e.g. "data:image/png;base64,...")
-                val base64Data = if (message.image.contains(",")) {
-                    message.image.substringAfter(",")
-                } else {
-                    message.image
+            val imageContent = message.image
+            val isUrl = imageContent.startsWith("http://") || imageContent.startsWith("https://")
+            
+            if (isUrl) {
+                // Load image from URL
+                val imageView = android.widget.ImageView(requireContext()).apply {
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = (12 * resources.displayMetrics.density).toInt()
+                    }
+                    adjustViewBounds = true
+                    scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
                 }
-                val imageBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
-                val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-                if (bitmap != null) {
-                    val imageView = android.widget.ImageView(requireContext()).apply {
-                        layoutParams = android.widget.LinearLayout.LayoutParams(
-                            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            topMargin = (12 * resources.displayMetrics.density).toInt()
+                val frameLayout = scrollBody.parent as FrameLayout
+                val parentLayout = frameLayout.parent as android.widget.LinearLayout
+                val index = parentLayout.indexOfChild(frameLayout)
+                parentLayout.addView(imageView, index + 1)
+                
+                // Download image in background
+                viewLifecycleOwner.lifecycleScope.launch {
+                    try {
+                        val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val connection = java.net.URL(imageContent).openConnection() as java.net.HttpURLConnection
+                            connection.connectTimeout = 10000
+                            connection.readTimeout = 10000
+                            connection.doInput = true
+                            connection.connect()
+                            val input = connection.inputStream
+                            android.graphics.BitmapFactory.decodeStream(input)
                         }
-                        adjustViewBounds = true
-                        setImageBitmap(bitmap)
-                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                        if (bitmap != null) {
+                            imageView.setImageBitmap(bitmap)
+                            imageView.setOnLongClickListener {
+                                showImageOptionsDialog(bitmap)
+                                true
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("MessagesFragment", "Failed to load image from URL", e)
                     }
-                    // Long-press to save or share
-                    imageView.setOnLongClickListener {
-                        showImageOptionsDialog(bitmap)
-                        true
-                    }
-                    val frameLayout = scrollBody.parent as FrameLayout
-                    val parentLayout = frameLayout.parent as android.widget.LinearLayout
-                    val index = parentLayout.indexOfChild(frameLayout)
-                    parentLayout.addView(imageView, index + 1)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("MessagesFragment", "Failed to decode image", e)
+            } else {
+                // Base64 image
+                try {
+                    val base64Data = if (imageContent.contains(",")) {
+                        imageContent.substringAfter(",")
+                    } else {
+                        imageContent
+                    }
+                    val imageBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                    val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                    if (bitmap != null) {
+                        val imageView = android.widget.ImageView(requireContext()).apply {
+                            layoutParams = android.widget.LinearLayout.LayoutParams(
+                                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                topMargin = (12 * resources.displayMetrics.density).toInt()
+                            }
+                            adjustViewBounds = true
+                            setImageBitmap(bitmap)
+                            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                        }
+                        imageView.setOnLongClickListener {
+                            showImageOptionsDialog(bitmap)
+                            true
+                        }
+                        val frameLayout = scrollBody.parent as FrameLayout
+                        val parentLayout = frameLayout.parent as android.widget.LinearLayout
+                        val index = parentLayout.indexOfChild(frameLayout)
+                        parentLayout.addView(imageView, index + 1)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("MessagesFragment", "Failed to decode image", e)
+                }
             }
         }
 
@@ -574,22 +622,46 @@ class MessagesFragment : Fragment() {
                 
                 // Show thumbnail if image exists
                 if (!message.image.isNullOrEmpty()) {
-                    try {
-                        val base64Data = if (message.image.contains(",")) {
-                            message.image.substringAfter(",")
-                        } else {
-                            message.image
+                    val imageContent = message.image
+                    val isUrl = imageContent.startsWith("http://") || imageContent.startsWith("https://")
+                    
+                    if (isUrl) {
+                        ivThumbnail.visibility = View.VISIBLE
+                        ivThumbnail.setImageResource(android.R.drawable.ic_menu_gallery)
+                        // Load URL thumbnail in background
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                            try {
+                                val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                    val connection = java.net.URL(imageContent).openConnection() as java.net.HttpURLConnection
+                                    connection.connectTimeout = 5000
+                                    connection.readTimeout = 5000
+                                    connection.doInput = true
+                                    connection.connect()
+                                    android.graphics.BitmapFactory.decodeStream(connection.inputStream)
+                                }
+                                if (bitmap != null) {
+                                    ivThumbnail.setImageBitmap(bitmap)
+                                }
+                            } catch (_: Exception) {}
                         }
-                        val imageBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
-                        val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-                        if (bitmap != null) {
-                            ivThumbnail.setImageBitmap(bitmap)
-                            ivThumbnail.visibility = View.VISIBLE
-                        } else {
+                    } else {
+                        try {
+                            val base64Data = if (imageContent.contains(",")) {
+                                imageContent.substringAfter(",")
+                            } else {
+                                imageContent
+                            }
+                            val imageBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                            val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                            if (bitmap != null) {
+                                ivThumbnail.setImageBitmap(bitmap)
+                                ivThumbnail.visibility = View.VISIBLE
+                            } else {
+                                ivThumbnail.visibility = View.GONE
+                            }
+                        } catch (e: Exception) {
                             ivThumbnail.visibility = View.GONE
                         }
-                    } catch (e: Exception) {
-                        ivThumbnail.visibility = View.GONE
                     }
                 } else {
                     ivThumbnail.visibility = View.GONE
