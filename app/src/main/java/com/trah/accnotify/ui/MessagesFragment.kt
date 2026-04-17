@@ -238,44 +238,99 @@ class MessagesFragment : Fragment() {
             val imageContent = message.image
             val isUrl = imageContent.startsWith("http://") || imageContent.startsWith("https://")
             
+            val frameLayout = scrollBody.parent as FrameLayout
+            val parentLayout = frameLayout.parent as android.widget.LinearLayout
+            val insertIndex = parentLayout.indexOfChild(frameLayout) + 1
+            // Account for raw content toggle views that may have been added above
+            val actualInsertIndex = if (isJson || hasSeparator) insertIndex + 2 else insertIndex
+            
             if (isUrl) {
-                // Load image from URL
+                // Loading indicator
+                val loadingText = TextView(requireContext()).apply {
+                    text = "图片加载中..."
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setTextColor(resources.getColor(R.color.clean_text_secondary, null))
+                    setPadding(0, (12 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+                }
+                parentLayout.addView(loadingText, actualInsertIndex)
+                
+                // ImageView with minimum height so it's visible
                 val imageView = android.widget.ImageView(requireContext()).apply {
                     layoutParams = android.widget.LinearLayout.LayoutParams(
                         android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                         android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
-                        topMargin = (12 * resources.displayMetrics.density).toInt()
+                        topMargin = (8 * resources.displayMetrics.density).toInt()
                     }
                     adjustViewBounds = true
                     scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                    visibility = View.GONE
                 }
-                val frameLayout = scrollBody.parent as FrameLayout
-                val parentLayout = frameLayout.parent as android.widget.LinearLayout
-                val index = parentLayout.indexOfChild(frameLayout)
-                parentLayout.addView(imageView, index + 1)
+                parentLayout.addView(imageView, actualInsertIndex + 1)
+                
+                // "Show original URL" button
+                val urlBtn = TextView(requireContext()).apply {
+                    text = "查看原始图片链接"
+                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f)
+                    setTextColor(resources.getColor(R.color.clean_primary, null))
+                    setPadding(0, (8 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+                    setOnClickListener {
+                        showCleanDialog(
+                            title = "图片链接",
+                            message = imageContent,
+                            positiveText = "复制链接",
+                            onPositive = {
+                                copyToClipboard(imageContent)
+                                Toast.makeText(requireContext(), "已复制图片链接", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                }
+                parentLayout.addView(urlBtn, actualInsertIndex + 2)
                 
                 // Download image in background
                 viewLifecycleOwner.lifecycleScope.launch {
                     try {
                         val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            val connection = java.net.URL(imageContent).openConnection() as java.net.HttpURLConnection
-                            connection.connectTimeout = 10000
-                            connection.readTimeout = 10000
+                            val url = java.net.URL(imageContent)
+                            val connection = url.openConnection() as java.net.HttpURLConnection
+                            connection.connectTimeout = 15000
+                            connection.readTimeout = 15000
+                            connection.instanceFollowRedirects = true
+                            connection.setRequestProperty("User-Agent", "Accnotify/1.0")
+                            connection.setRequestProperty("Accept", "image/*,*/*")
                             connection.doInput = true
                             connection.connect()
-                            val input = connection.inputStream
-                            android.graphics.BitmapFactory.decodeStream(input)
+                            
+                            val responseCode = connection.responseCode
+                            if (responseCode != java.net.HttpURLConnection.HTTP_OK) {
+                                throw Exception("HTTP $responseCode")
+                            }
+                            
+                            val inputStream = connection.inputStream
+                            val result = android.graphics.BitmapFactory.decodeStream(inputStream)
+                            inputStream.close()
+                            connection.disconnect()
+                            result
                         }
-                        if (bitmap != null) {
+                        if (bitmap != null && isAdded) {
+                            loadingText.visibility = View.GONE
+                            imageView.visibility = View.VISIBLE
                             imageView.setImageBitmap(bitmap)
                             imageView.setOnLongClickListener {
                                 showImageOptionsDialog(bitmap)
                                 true
                             }
+                        } else if (isAdded) {
+                            loadingText.text = "图片加载失败（无法解码）"
+                            loadingText.setTextColor(resources.getColor(R.color.clean_text_secondary, null))
                         }
                     } catch (e: Exception) {
-                        android.util.Log.e("MessagesFragment", "Failed to load image from URL", e)
+                        if (isAdded) {
+                            loadingText.text = "图片加载失败: ${e.message}"
+                            loadingText.setTextColor(resources.getColor(R.color.clean_text_secondary, null))
+                            android.util.Log.e("MessagesFragment", "Failed to load image from URL: $imageContent", e)
+                        }
                     }
                 }
             } else {
@@ -304,10 +359,7 @@ class MessagesFragment : Fragment() {
                             showImageOptionsDialog(bitmap)
                             true
                         }
-                        val frameLayout = scrollBody.parent as FrameLayout
-                        val parentLayout = frameLayout.parent as android.widget.LinearLayout
-                        val index = parentLayout.indexOfChild(frameLayout)
-                        parentLayout.addView(imageView, index + 1)
+                        parentLayout.addView(imageView, actualInsertIndex)
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("MessagesFragment", "Failed to decode image", e)
@@ -632,12 +684,25 @@ class MessagesFragment : Fragment() {
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                             try {
                                 val bitmap = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                    val connection = java.net.URL(imageContent).openConnection() as java.net.HttpURLConnection
+                                    val url = java.net.URL(imageContent)
+                                    val connection = url.openConnection() as java.net.HttpURLConnection
                                     connection.connectTimeout = 5000
                                     connection.readTimeout = 5000
+                                    connection.instanceFollowRedirects = true
+                                    connection.setRequestProperty("User-Agent", "Accnotify/1.0")
+                                    connection.setRequestProperty("Accept", "image/*,*/*")
                                     connection.doInput = true
                                     connection.connect()
-                                    android.graphics.BitmapFactory.decodeStream(connection.inputStream)
+                                    if (connection.responseCode == java.net.HttpURLConnection.HTTP_OK) {
+                                        val input = connection.inputStream
+                                        val result = android.graphics.BitmapFactory.decodeStream(input)
+                                        input.close()
+                                        connection.disconnect()
+                                        result
+                                    } else {
+                                        connection.disconnect()
+                                        null
+                                    }
                                 }
                                 if (bitmap != null) {
                                     ivThumbnail.setImageBitmap(bitmap)
