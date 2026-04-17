@@ -14,7 +14,6 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.materialswitch.MaterialSwitch
 import com.trah.accnotify.AccnotifyApp
 import com.trah.accnotify.BuildConfig
 import com.trah.accnotify.R
@@ -41,8 +40,9 @@ class SettingsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         setupServerList()
         setupActions()
+        setupDisplayModeSelector()
+        setupThemeColorPicker()
         setupForegroundNotificationSwitch()
-        setupKeepAliveSettings()
         setupVersionInfo()
     }
 
@@ -146,29 +146,6 @@ class SettingsFragment : Fragment() {
             .show()
     }
 
-    private fun setupForegroundNotificationSwitch() {
-        val switch = binding.root.findViewById<MaterialSwitch>(R.id.switchForegroundNotification)
-        switch.isChecked = app.keyManager.showForegroundNotification
-
-        switch.setOnCheckedChangeListener { _, isChecked ->
-            app.keyManager.showForegroundNotification = isChecked
-            Toast.makeText(
-                context,
-                if (isChecked) "已开启前台通知" else "已关闭前台通知，需重启服务生效",
-                Toast.LENGTH_SHORT
-            ).show()
-
-            // Restart WebSocket service to apply changes
-            val intent = android.content.Intent(context, com.trah.accnotify.service.WebSocketService::class.java)
-            context?.stopService(intent)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context?.startForegroundService(intent)
-            } else {
-                context?.startService(intent)
-            }
-        }
-    }
-
     private fun setupServerList() {
         binding.serverListContainer.removeAllViews()
         val keyManager = app.keyManager
@@ -192,11 +169,12 @@ class SettingsFragment : Fragment() {
 
             // Click to select
             itemBinding.root.setOnClickListener {
+                if (!isAdded) return@setOnClickListener
                 keyManager.serverUrl = url
                 Toast.makeText(context, "已切换服务器", Toast.LENGTH_SHORT).show()
                 setupServerList() // Refresh UI
-                // Restart WebSocket service to connect to new server
-                restartWebSocketService()
+                // Restart WebSocket service to connect to new server (delay to let UI settle)
+                view?.postDelayed({ restartWebSocketService() }, 300)
             }
 
             // Edit
@@ -291,59 +269,140 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    private fun setupKeepAliveSettings() {
-        val helper = com.trah.accnotify.util.KeepAliveHelper
-        val context = requireContext()
-
-        binding.root.findViewById<TextView>(R.id.btnKeepAliveStatus).setOnClickListener {
-            showKeepAliveStatusDialog()
-        }
-
-        binding.root.findViewById<TextView>(R.id.btnBatteryOptimization).setOnClickListener {
-            helper.requestIgnoreBatteryOptimization(context)
-        }
-
-        binding.root.findViewById<TextView>(R.id.btnAutoStart).setOnClickListener {
-            helper.openAutoStartSettings(context)
-        }
-
-        binding.root.findViewById<TextView>(R.id.btnAccessibility).setOnClickListener {
-            helper.openAccessibilitySettings(context)
-        }
-
-        binding.root.findViewById<TextView>(R.id.btnBackgroundSettings).setOnClickListener {
-            helper.openBackgroundSettings(context)
-        }
-
-        binding.root.findViewById<TextView>(R.id.btnNotificationPermission).setOnClickListener {
-            helper.openNotificationSettings(context)
-        }
-
-        binding.root.findViewById<TextView>(R.id.btnExactAlarm).setOnClickListener {
-            helper.requestExactAlarmPermission(context)
-        }
-
-        binding.root.findViewById<TextView>(R.id.btnAppSettings).setOnClickListener {
-            helper.openAppSettings(context)
+    private fun setupForegroundNotificationSwitch() {
+        val keyManager = app.keyManager
+        binding.switchForegroundNotification.isChecked = keyManager.showForegroundNotification
+        binding.switchForegroundNotification.setOnCheckedChangeListener { _, isChecked ->
+            keyManager.showForegroundNotification = isChecked
+            // Restart service so it picks up the new setting immediately
+            view?.postDelayed({ restartWebSocketService() }, 200)
         }
     }
 
-    private fun showKeepAliveStatusDialog() {
-        val context = requireContext()
-        val helper = com.trah.accnotify.util.KeepAliveHelper
+    private fun setupDisplayModeSelector() {
+        val currentMode = app.keyManager.themeMode
 
-        val summary = helper.getStatusSummary(context)
-        val actions = helper.getRecommendedActions()
+        // 先清除 listener，防止设置 isChecked 时触发回调
+        binding.themeModeGroup.setOnCheckedChangeListener(null)
 
-        val message = StringBuilder(summary)
-        message.append("\n建议操作:\n")
-        actions.forEach { message.append("• $it\n") }
+        when (currentMode) {
+            "light" -> binding.radioLightMode.isChecked = true
+            "dark" -> binding.radioDarkMode.isChecked = true
+            else -> binding.radioFollowSystem.isChecked = true
+        }
 
-        AlertDialog.Builder(requireContext())
-            .setTitle("保活状态及建议")
-            .setMessage(message.toString())
-            .setPositiveButton("确定", null)
-            .show()
+        binding.themeModeGroup.setOnCheckedChangeListener { _, checkedId ->
+            val newMode = when (checkedId) {
+                R.id.radioLightMode -> "light"
+                R.id.radioDarkMode -> "dark"
+                else -> "system"
+            }
+            if (newMode != app.keyManager.themeMode) {
+                app.keyManager.themeMode = newMode
+                val mode = when (newMode) {
+                    "light" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+                    "dark" -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+                    else -> androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+                }
+                // 清除 listener 防止重建过程中再次触发
+                binding.themeModeGroup.setOnCheckedChangeListener(null)
+                // post 到下一帧，避免 OPPO/OnePlus ViewMirrorManager 在当前布局过程中冲突
+                view?.post {
+                    androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(mode)
+                }
+            }
+        }
+    }
+
+    private fun setupThemeColorPicker() {
+        val container = binding.root.findViewById<android.widget.LinearLayout>(R.id.themeColorContainer)
+        container.removeAllViews()
+        val keyManager = app.keyManager
+        val currentTheme = keyManager.themeColor
+
+        // Color definitions: key -> (display color hex, name)
+        val colors = listOf(
+            "blue" to Pair(0xFF005FB8.toInt(), "蓝色"),
+            "green" to Pair(0xFF107C10.toInt(), "绿色"),
+            "red" to Pair(0xFFC42B1C.toInt(), "红色"),
+            "pink" to Pair(0xFFBF0077.toInt(), "粉色"),
+            "white" to Pair(0xFF9E9E9E.toInt(), "浅色"),
+            "black" to Pair(0xFF1F2937.toInt(), "深色")
+        )
+
+        val density = resources.displayMetrics.density
+        val circleSize = (40 * density).toInt()
+        val margin = (8 * density).toInt()
+
+        for ((key, pair) in colors) {
+            val (color, name) = pair
+            val outerLayout = android.widget.LinearLayout(requireContext()).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    marginStart = margin
+                    marginEnd = margin
+                }
+            }
+
+            // Color circle
+            val circleView = View(requireContext()).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(circleSize, circleSize)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(color)
+                    if (key == currentTheme) {
+                        setStroke((3 * density).toInt(), color)
+                    }
+                }
+            }
+
+            // Checkmark overlay for selected
+            val frameLayout = FrameLayout(requireContext()).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(circleSize, circleSize)
+            }
+            frameLayout.addView(circleView)
+
+            if (key == currentTheme) {
+                val checkMark = TextView(requireContext()).apply {
+                    text = "✓"
+                    setTextColor(android.graphics.Color.WHITE)
+                    textSize = 14f
+                    gravity = android.view.Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                }
+                frameLayout.addView(checkMark)
+            }
+
+            // Label
+            val label = TextView(requireContext()).apply {
+                text = name
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 11f)
+                setTextColor(resources.getColor(R.color.clean_text_secondary, null))
+                gravity = android.view.Gravity.CENTER
+                setPadding(0, (4 * density).toInt(), 0, 0)
+            }
+
+            outerLayout.addView(frameLayout)
+            outerLayout.addView(label)
+
+            outerLayout.setOnClickListener {
+                if (key != currentTheme) {
+                    keyManager.themeColor = key
+                    // Recreate activity to apply new theme
+                    activity?.recreate()
+                    return@setOnClickListener // 主题色切换后立即 return，防止 recreate 后 fragment 操作
+                }
+            }
+
+            container.addView(outerLayout)
+        }
     }
 
     private fun showCleanDialog(
@@ -402,15 +461,13 @@ class SettingsFragment : Fragment() {
 
     private fun restartWebSocketService() {
         val ctx = context ?: return
-        val intent = android.content.Intent(ctx, com.trah.accnotify.service.WebSocketService::class.java)
-        ctx.stopService(intent)
-        val startIntent = android.content.Intent(ctx, com.trah.accnotify.service.WebSocketService::class.java).apply {
-            action = com.trah.accnotify.service.WebSocketService.ACTION_CONNECT
-        }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            ctx.startForegroundService(startIntent)
-        } else {
-            ctx.startService(startIntent)
+        if (!isAdded) return
+        try {
+            val intent = android.content.Intent(ctx, com.trah.accnotify.service.WebSocketService::class.java)
+            ctx.stopService(intent)
+            com.trah.accnotify.service.WebSocketService.start(ctx)
+        } catch (e: Exception) {
+            android.util.Log.e("SettingsFragment", "Failed to restart WebSocket service", e)
         }
     }
 }

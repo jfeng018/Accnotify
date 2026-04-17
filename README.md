@@ -1,21 +1,20 @@
 # Accnotify
 
-Accnotify 是一款极简、纯净、安全的 Android 即时通知推送工具。它兼容 Bark 协议，采用创新的保活机制确保在各种 Android 系统（如 ColorOS、HyperOS 等）下都能稳定运行。
+Accnotify 是一款面向 Android 的即时通知推送工具，支持 Go 自托管服务端。它兼容 Bark 风格接口，支持 WebSocket 实时推送、Webhook 整形、图片消息、历史记录和端到端加密。
 
-## 核心特性
+## 核心亮点
 
-- **Bark 兼容**：支持标准的 Bark 推送接口，您可以直接使用现有的推送脚本。
-- **内容加密传输**：服务器到客户端采用 RSA+AES 加密传输，保护推送内容隐私。
-- **超强保活**：利用 Android 辅助功能（Accessibility Service）作为保活锚点，配合独立进程守护，实现后台"永生"，告别消息延迟。
-- **Webhook 支持**：支持 GitHub、GitLab、Docker Hub、Gitea 等 Webhook 通知。
-- **离线存储**：支持推送历史记录，方便随时查阅。
-- **无感运行**：无需 Root，不依赖 Xposed，不修改系统，安装即可使用。
+- Bark 风格接口，已有脚本可以快速迁移
+- Go 服务端稳定、完整、易自托管
+- 支持 GitHub、GitLab、Docker Hub、Gitea、飞书、钉钉、企微和通用 Webhook
+- 支持文本、链接、分组、角标、图片消息
+- 历史消息支持图片缩略图，详情图可长按保存或分享
+- 设置页支持主题色选择，以及浅色、暗夜、跟随系统三种显示模式
+- 首页集中展示系统权限入口，便于首次配置
 
-## 快速开始
+## 服务端部署
 
-### 1. 部署服务器
-
-您可以直接使用 Docker 快速部署后端：
+适合长期稳定使用，功能最完整。
 
 ```bash
 cd server
@@ -31,204 +30,159 @@ go build -o accnotify-server
 ./accnotify-server
 ```
 
-#### 额外说明
+## Android 客户端快速开始
 
-服务器采用 Go + SQLite 架构：
-
-- **SQLite 存储**：存储设备密钥与 RSA 公钥的对应关系，用于设备注册和验证
-- **消息处理**：消息不做持久化存储，仅通过 WebSocket 实时转发
-- **加密传输**：服务器收到推送后，用设备 RSA 公钥加密内容，再通过 WebSocket 发送给客户端
-
-**安全说明**：
-
-- **服务器可见明文**：推送者发送的内容在服务器端是明文，这个除非用客户端到客户端之间发送，不然没有办法，但那样不就变成微信了吗....
-- **设备验证**：通过 device_key 确保消息只发给指定设备，防止误发
-- **加密传输**：服务器到客户端采用 RSA 加密，即使 WebSocket 被截获也无法解密
-- **私钥保护**：每个设备的 RSA 私钥只存储在本地，确保只有目标设备能解密内容
-- **私有服务器（推荐）**：完全可控，适合敏感信息推送
-- **公共服务器**：适合一般通知推送，不建议推送敏感内容
-
-### 2. 安装客户端
-
-1. 下载并安装 Accnotify APK。
-2. 打开应用，输入您的服务器地址。
-3. **重要：** 进入"保活设置"，开启"辅助功能（保活）"和自启动权限。
-4. 复制生成的推送地址，即可开始发送消息。
+1. 安装 APK 并打开应用
+2. 在设置页填写你的服务器地址
+3. 回到首页，点击“注册设备 / 同步连接”
+4. 在首页“系统权限”中完成以下配置：
+   - 辅助功能（保活）
+   - 电池优化白名单
+   - 通知权限
+5. 复制推送地址或设备密钥，开始发送消息
 
 ## 推送示例
 
-### 基本推送
+### 基本文本推送
 
 ```bash
 curl -X POST "http://your-server:8080/push/your-device-key" \
-     -H "Content-Type: application/json" \
-     -d '{"title":"Hello","body":"这是一条来自 Accnotify 的消息"}'
+  -H "Content-Type: application/json" \
+  -d '{"title":"系统通知","body":"服务已经恢复正常"}'
 ```
 
-### GET 请求（兼容 Bark）
+### 带换行的推送
 
-注意：GET 请求内容不加密，仅用于测试。生产环境请使用 POST + HTTPS。
+```bash
+curl -X POST "http://your-server:8080/push/your-device-key" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"监控告警","body":"CPU 超过 90%\n\n当前负载：12.5\n内存使用：87%"}'
+```
+
+### 图片推送
+
+支持 Base64 图片字段，历史消息会显示缩略图，点开详情可查看大图并长按保存或分享。
+
+```json
+{
+  "title": "图片通知",
+  "body": "这是一张测试图片",
+  "image": "data:image/png;base64,..."
+}
+```
+
+### GET 请求（Bark 风格）
 
 ```bash
 curl "http://your-server:8080/push/your-device-key/标题/内容"
 ```
 
-## Webhook 使用
+也支持只传正文：
+
+```bash
+curl "http://your-server:8080/push/your-device-key/只有正文"
+```
+
+## Webhook 支持
 
 ### 通用 Webhook
 
-适用于任意 JSON 数据推送：
-
-```
+```text
 https://your-server.com/webhook/your-device-key
 ```
 
-### GitHub Webhook
+### 已适配的平台
 
-GitHub 仓库设置 -> Webhooks -> 添加 webhook：
+- GitHub
+- GitLab
+- Docker Hub
+- Gitea
+- 飞书 / Lark
+- 钉钉
+- 企业微信
+- 其他 JSON 或纯文本请求会走通用解析
 
-```
-Payload URL: https://your-server.com/webhook/your-device-key/github
-Content type: application/json
-```
+Webhook 消息默认展示整理后的内容，详情页底部可以展开查看原始内容。
 
-支持事件：Push、Ping 等
+## 测试页
 
-### GitLab Webhook
+项目根目录提供了本地测试页面：
 
-GitLab 项目设置 -> Webhooks：
+- test-push.html
 
-```
-URL: https://your-server.com/webhook/your-device-key/gitlab
-```
+用途：
 
-### Docker Hub Webhook
+- 手动输入服务器地址和设备密钥
+- 测试普通文本推送
+- 测试 JSON / Webhook 格式
+- 测试图片上传与图片消息发送
 
-Docker Hub 仓库 -> Webhooks：
+直接用浏览器打开即可，无需额外构建。
 
-```
-Webhook URL: https://your-server.com/webhook/your-device_key/docker
-```
+## 最近新增功能
 
-### Gitea Webhook
+- 服务器切换稳定性优化，降低切换时闪退概率
+- Webhook 文本中的换行符会自动还原为真实换行
+- 历史消息列表支持图片缩略图
+- 图片详情支持长按保存和分享
+- 设置页新增主题色切换
+- 新增浅色、暗夜、跟随系统显示模式
+- 首页整合系统权限入口，首次配置更直观
 
-Gitea 仓库设置 -> Webhooks：
+## API 概览
 
-```
-Target URL: https://your-server.com/webhook/your-device-key/gitea
-```
+### 注册设备
 
-## API 文档
-
-### POST /push/:device_key
-
-发送推送通知到指定设备。
-
-**请求体：**
-
-```json
-{
-  "title": "通知标题",
-  "body": "通知内容",
-  "group": "分组名称（可选）",
-  "sound": "通知声音（可选）",
-  "url": "点击跳转链接（可选）",
-  "badge": "角标数字（可选）"
-}
+```text
+POST /register
 ```
 
-**响应：**
-
-```json
-{
-  "success": true,
-  "message_id": "uuid"
-}
-```
-
-### POST /register
-
-注册设备到服务器。
-
-**请求体：**
+请求体示例：
 
 ```json
 {
   "device_key": "设备唯一标识",
   "public_key": "RSA 公钥（PEM 格式）",
-  "name": "设备名称（可选）"
+  "name": "设备名称"
 }
 ```
 
-### GET /push/:device_key/:title/:body
+### 发送推送
 
-兼容 Bark 的 GET 请求方式。
+```text
+POST /push/:device_key
+```
 
-## 客户端功能
+字段示例：
 
-### 首页
-
-- 显示设备密钥和推送地址
-- 一键复制推送地址
-- 实时查看 WebSocket 连接状态
-- 快速访问保活设置入口
-
-### 消息页面
-
-- 查看所有推送历史
-- 消息分组展示
-- 清空历史记录
-- 点击消息查看详情
-
-### 设置页面
-
-- **服务器配置**：添加、编辑、删除服务器地址
-- **服务设置**：控制前台通知显示（关闭后依赖辅助功能保活）
-- **危险区域**：重置 RSA 加密密钥
-- **关于项目**：查看版本信息、检查更新、访问 GitHub
-
-## 保活说明
-
-为确保应用后台稳定运行，请完成以下设置：
-
-1. **辅助功能**：开启 Accnotify 辅助功能服务
-2. **电池优化**：将 Accnotify 加入电池优化白名单
-3. **自启动**：允许 Accnotify 开机自启动（部分 ROM 需要）
-4. **后台运行**：允许 Accnotify 后台活动（MIUI/HyperOS 需要）
-5. **通知权限**：允许 Accnotify 发送通知
-6. **精确闹钟**：允许精确闹钟权限（Android 12+）
-
-## 注意事项
-
-- 关闭前台通知后，保活能力会下降，建议仅在特殊情况下关闭
-- 重置加密密钥后，旧消息将无法解密，请谨慎操作
-- 服务器能见推送明文，敏感内容请使用私有服务器
-- device_key 是唯一凭证，请妥善保管避免泄露
-- Webhook 推送的消息会自动分组到 "webhook" 组
+```json
+{
+  "title": "通知标题",
+  "body": "通知正文",
+  "group": "分组名称",
+  "url": "点击跳转链接",
+  "badge": 1,
+  "image": "data:image/png;base64,..."
+}
+```
 
 ## 项目结构
 
-```
+```text
 Accnotify/
-├── app/                  # Android 客户端
-│   ├── src/main/
-│   │   ├── java/        # Kotlin 源码
-│   │   ├── res/         # 资源文件
-│   │   └── assets/      # Lottie 动画等
-│   └── build.gradle.kts # 客户端构建配置
-└── server/              # Go 服务器
-    ├── handler/         # 请求处理器
-    ├── model/          # 数据模型
-    ├── storage/        # 数据库存储
-    ├── crypto/         # 加密模块
-    └── main.go         # 服务器入口
+├── app/                 Android 客户端
+├── server/              Go 服务端
+└── test-push.html       本地测试页
 ```
 
-## 相关链接
+## 注意事项
 
-- GitHub: https://github.com/trah01/Accnotify
-- 问题反馈: https://github.com/trah01/Accnotify/issues
+- 敏感消息建议使用你自己的 Go 服务端
+- 重置加密密钥后，旧消息将无法解密
+- device_key 是唯一投递凭证，请妥善保管
 
-## 致谢
+## 链接
 
-Accnotify 的灵感来自于 Bark 项目，并结合了 Android 无障碍服务保活的最佳实践。
+- GitHub：https://github.com/trah01/Accnotify
+- Issues：https://github.com/trah01/Accnotify/issues
+

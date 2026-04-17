@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,6 +69,10 @@ func (h *PushHandler) HandlePush(c *gin.Context) {
 
 	// Generate message ID
 	messageID := uuid.New().String()
+
+	// Replace literal \n with actual newlines
+	req.Body = strings.ReplaceAll(req.Body, `\n`, "\n")
+	req.Title = strings.ReplaceAll(req.Title, `\n`, "\n")
 
 	// Create message
 	msg := &model.Message{

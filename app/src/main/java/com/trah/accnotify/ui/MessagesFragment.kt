@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -149,8 +150,73 @@ class MessagesFragment : Fragment() {
         val markwon = Markwon.builder(requireContext())
             .usePlugin(SoftBreakAddsNewLinePlugin.create())
             .build()
-        val markdown = formatMessageBodyAsMarkdown(message.body ?: "")
-        markwon.setMarkdown(tvBody, markdown)
+        
+        val body = message.body ?: ""
+        val trimmedBody = body.trim()
+        val isJson = (trimmedBody.startsWith("{") && trimmedBody.endsWith("}")) ||
+                     (trimmedBody.startsWith("[") && trimmedBody.endsWith("]"))
+        val hasSeparator = trimmedBody.contains("--- 完整数据 ---")
+        
+        // Show formatted content only (without raw section) by default
+        val formattedOnly = if (isJson || hasSeparator) {
+            formatMessageBodyForDisplay(body)
+        } else {
+            body
+        }
+        markwon.setMarkdown(tvBody, formattedOnly)
+        
+        // Add "View Raw Content" toggle if content is JSON or has separator
+        if (isJson || hasSeparator) {
+            val frameLayout = scrollBody.parent as FrameLayout
+            val parentLayout = frameLayout.parent as android.widget.LinearLayout
+            val index = parentLayout.indexOfChild(frameLayout)
+            
+            // Raw content container (hidden by default)
+            val rawScrollView = androidx.core.widget.NestedScrollView(requireContext()).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = (8 * resources.displayMetrics.density).toInt()
+                }
+                setPadding(
+                    (12 * resources.displayMetrics.density).toInt(),
+                    (12 * resources.displayMetrics.density).toInt(),
+                    (12 * resources.displayMetrics.density).toInt(),
+                    (12 * resources.displayMetrics.density).toInt()
+                )
+                setBackgroundResource(R.drawable.bg_clean_input)
+                visibility = View.GONE
+            }
+            val rawText = TextView(requireContext()).apply {
+                text = trimmedBody
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12f)
+                setTextColor(resources.getColor(R.color.clean_text_secondary, null))
+                setTypeface(android.graphics.Typeface.MONOSPACE)
+                setTextIsSelectable(true)
+            }
+            rawScrollView.addView(rawText)
+            
+            // Toggle button
+            val toggleBtn = TextView(requireContext()).apply {
+                text = "点击查看原始内容 ▼"
+                setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 13f)
+                setTextColor(resources.getColor(R.color.clean_primary, null))
+                setPadding(0, (12 * resources.displayMetrics.density).toInt(), 0, (4 * resources.displayMetrics.density).toInt())
+                setOnClickListener {
+                    if (rawScrollView.visibility == View.GONE) {
+                        rawScrollView.visibility = View.VISIBLE
+                        this.text = "收起原始内容 ▲"
+                    } else {
+                        rawScrollView.visibility = View.GONE
+                        this.text = "点击查看原始内容 ▼"
+                    }
+                }
+            }
+            
+            parentLayout.addView(toggleBtn, index + 1)
+            parentLayout.addView(rawScrollView, index + 2)
+        }
         
         // 设置滚动区域最大高度为屏幕高度的 50%
         val displayMetrics = resources.displayMetrics
@@ -167,7 +233,7 @@ class MessagesFragment : Fragment() {
         if (!message.image.isNullOrEmpty()) {
             try {
                 // Strip data URI prefix if present (e.g. "data:image/png;base64,...")
-                val base64Data = if (message.image!!.contains(",")) {
+                val base64Data = if (message.image.contains(",")) {
                     message.image.substringAfter(",")
                 } else {
                     message.image
@@ -185,6 +251,11 @@ class MessagesFragment : Fragment() {
                         adjustViewBounds = true
                         setImageBitmap(bitmap)
                         scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                    }
+                    // Long-press to save or share
+                    imageView.setOnLongClickListener {
+                        showImageOptionsDialog(bitmap)
+                        true
                     }
                     val frameLayout = scrollBody.parent as FrameLayout
                     val parentLayout = frameLayout.parent as android.widget.LinearLayout
@@ -226,10 +297,35 @@ class MessagesFragment : Fragment() {
             val summary = trimmed.substring(0, separatorIndex).trim()
             val fullData = trimmed.substring(separatorIndex + "--- 完整数据 ---".length).trim()
             val summaryMd = jsonToReadableMarkdown(summary)
-            return summaryMd + "\n\n---\n\n<details>\n<summary>完整数据</summary>\n\n```\n$fullData\n```\n</details>"
+            return summaryMd + "\n\n---\n\n**原始内容:**\n```\n$fullData\n```"
         }
 
-        // JSON 对象或数组
+        // JSON 对象或数组 - show formatted content with raw toggle
+        if ((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+            (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+            val formatted = jsonToReadableMarkdown(trimmed)
+            // Only show raw section if the formatted version differs from input
+            if (formatted != trimmed) {
+                return formatted + "\n\n---\n\n**原始内容:**\n```\n$trimmed\n```"
+            }
+            return formatted
+        }
+
+        return body
+    }
+
+    /**
+     * 格式化消息正文用于详情对话框显示（仅格式化内容，不含原始数据部分）
+     */
+    private fun formatMessageBodyForDisplay(body: String): String {
+        val trimmed = body.trim()
+
+        val separatorIndex = trimmed.indexOf("--- 完整数据 ---")
+        if (separatorIndex > 0) {
+            val summary = trimmed.substring(0, separatorIndex).trim()
+            return jsonToReadableMarkdown(summary)
+        }
+
         if ((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
             (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
             return jsonToReadableMarkdown(trimmed)
@@ -304,6 +400,70 @@ class MessagesFragment : Fragment() {
                 if (p.isString) p.asString else p.toString()
             }
             else -> toString()
+        }
+    }
+
+    /**
+     * 显示图片操作选项（保存/分享）
+     */
+    private fun showImageOptionsDialog(bitmap: android.graphics.Bitmap) {
+        val items = arrayOf("保存到相册", "分享图片")
+        AlertDialog.Builder(requireContext())
+            .setTitle("图片操作")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> saveImageToGallery(bitmap)
+                    1 -> shareImage(bitmap)
+                }
+            }
+            .show()
+    }
+
+    private fun saveImageToGallery(bitmap: android.graphics.Bitmap) {
+        try {
+            val filename = "accnotify_${System.currentTimeMillis()}.png"
+            val contentValues = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, "image/png")
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/Accnotify")
+                }
+            }
+            val uri = requireContext().contentResolver.insert(
+                android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues
+            )
+            uri?.let {
+                requireContext().contentResolver.openOutputStream(it)?.use { out ->
+                    bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                }
+                Toast.makeText(requireContext(), "已保存到相册", Toast.LENGTH_SHORT).show()
+            } ?: Toast.makeText(requireContext(), "保存失败", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun shareImage(bitmap: android.graphics.Bitmap) {
+        try {
+            val cachePath = java.io.File(requireContext().cacheDir, "shared_images")
+            cachePath.mkdirs()
+            val file = java.io.File(cachePath, "accnotify_${System.currentTimeMillis()}.png")
+            java.io.FileOutputStream(file).use { out ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+            }
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                requireContext(),
+                "${requireContext().packageName}.fileprovider",
+                file
+            )
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "分享图片"))
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -405,11 +565,35 @@ class MessagesFragment : Fragment() {
             private val tvTitle: TextView = itemView.findViewById(R.id.tvTitle)
             private val tvBody: TextView = itemView.findViewById(R.id.tvBody)
             private val tvTime: TextView = itemView.findViewById(R.id.tvTime)
+            private val ivThumbnail: android.widget.ImageView = itemView.findViewById(R.id.ivThumbnail)
 
             fun bind(message: Message) {
                 tvTitle.text = message.title ?: "Accnotify"
                 tvBody.text = message.body ?: ""
                 tvTime.text = dateFormat.format(message.timestamp)
+                
+                // Show thumbnail if image exists
+                if (!message.image.isNullOrEmpty()) {
+                    try {
+                        val base64Data = if (message.image.contains(",")) {
+                            message.image.substringAfter(",")
+                        } else {
+                            message.image
+                        }
+                        val imageBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                        val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                        if (bitmap != null) {
+                            ivThumbnail.setImageBitmap(bitmap)
+                            ivThumbnail.visibility = View.VISIBLE
+                        } else {
+                            ivThumbnail.visibility = View.GONE
+                        }
+                    } catch (e: Exception) {
+                        ivThumbnail.visibility = View.GONE
+                    }
+                } else {
+                    ivThumbnail.visibility = View.GONE
+                }
                 
                 // 点击查看详情
                 itemView.setOnClickListener {

@@ -116,8 +116,24 @@ class HomeFragment : Fragment() {
         // Reset Encryption moved to SettingsFragment
 
         binding.btnCopyPushUrl.setOnClickListener {
-            val url = "${app.keyManager.serverUrl.trimEnd('/')}/push/${app.keyManager.getDeviceKey()}"
-            copyToClipboard("Push URL", url)
+            val base = app.keyManager.serverUrl.trimEnd('/')
+            val key = app.keyManager.getDeviceKey() ?: return@setOnClickListener
+            val pushUrl = "$base/push/$key"
+            val webhookUrl = "$base/webhook/$key"
+
+            val items = arrayOf(
+                "Push 链接   $pushUrl",
+                "Webhook 链接   $webhookUrl"
+            )
+            android.app.AlertDialog.Builder(requireContext())
+                .setTitle("复制链接")
+                .setItems(items) { _, which ->
+                    when (which) {
+                        0 -> copyToClipboard("Push URL", pushUrl)
+                        1 -> copyToClipboard("Webhook URL", webhookUrl)
+                    }
+                }
+                .show()
         }
 
         binding.cardAccessibility.setOnClickListener {
@@ -125,15 +141,15 @@ class HomeFragment : Fragment() {
         }
 
         binding.cardAutoStart.setOnClickListener {
-            // Open app settings to allow user to configure background running
-            try {
-                val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                intent.data = android.net.Uri.parse("package:" + requireContext().packageName)
-                startActivity(intent)
-            } catch (e: Exception) {
-                // Fallback to battery optimization settings
-                KeepAliveHelper.requestIgnoreBatteryOptimization(requireContext())
-            }
+            KeepAliveHelper.requestIgnoreBatteryOptimization(requireContext())
+        }
+
+        binding.cardNotificationPermission.setOnClickListener {
+            KeepAliveHelper.openNotificationSettings(requireContext())
+        }
+
+        binding.cardAppSettings.setOnClickListener {
+            KeepAliveHelper.openAppSettings(requireContext())
         }
 
         binding.cardTutorial.setOnClickListener {

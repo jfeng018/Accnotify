@@ -189,8 +189,23 @@ class KeyManager(private val context: Context) {
      * When disabled, the app relies on AccessibilityService + JobService for keep-alive
      */
     var showForegroundNotification: Boolean
-        get() = prefs.getBoolean(PREF_SHOW_FOREGROUND_NOTIFICATION, true)
+        get() = prefs.getBoolean(PREF_SHOW_FOREGROUND_NOTIFICATION, false)
         set(value) = prefs.edit().putBoolean(PREF_SHOW_FOREGROUND_NOTIFICATION, value).apply()
+
+    /**
+     * Theme color preference
+     * Values: "blue" (default), "green", "red", "pink", "white", "black"
+     */
+    var themeColor: String
+        get() = prefs.getString(PREF_THEME_COLOR, "blue") ?: "blue"
+        set(value) = prefs.edit().putString(PREF_THEME_COLOR, value).apply()
+
+    /**
+     * Display mode preference: system / light / dark
+     */
+    var themeMode: String
+        get() = prefs.getString(PREF_THEME_MODE, "system") ?: "system"
+        set(value) = prefs.edit().putString(PREF_THEME_MODE, value).apply()
 
     companion object {
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
@@ -201,7 +216,25 @@ class KeyManager(private val context: Context) {
         private const val PREF_SERVER_LIST = "server_list"
         private const val PREF_IS_REGISTERED = "is_registered"
         private const val PREF_SHOW_FOREGROUND_NOTIFICATION = "show_foreground_notification"
+        private const val PREF_THEME_COLOR = "theme_color"
+        private const val PREF_THEME_MODE = "theme_mode"
         private const val DEFAULT_SERVER_URL = "https://an.trah.cn"
+
+        // Theme color definitions (Fluent-inspired + Google Material You)
+        val THEME_COLORS = mapOf(
+            "blue" to ThemeColorDef("#005FB8", "#007AFF", "蓝色"),      // Fluent Blue
+            "green" to ThemeColorDef("#107C10", "#34C759", "绿色"),     // Fluent Green
+            "red" to ThemeColorDef("#C42B1C", "#FF3B30", "红色"),       // Fluent Red
+            "pink" to ThemeColorDef("#BF0077", "#FF2D55", "粉色"),      // Material Pink
+            "white" to ThemeColorDef("#6B7280", "#8E8E93", "浅色"),     // Neutral Grey
+            "black" to ThemeColorDef("#1F2937", "#F5F5F7", "深色")      // Dark mode primary
+        )
     }
+
+    data class ThemeColorDef(
+        val lightPrimary: String,   // Light mode primary color
+        val darkPrimary: String,    // Dark mode primary color
+        val displayName: String     // Chinese display name
+    )
 
 }

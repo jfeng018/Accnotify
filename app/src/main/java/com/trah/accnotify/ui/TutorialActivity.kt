@@ -111,6 +111,18 @@ class TutorialActivity : AppCompatActivity() {
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Apply theme color overlay
+        val themeOverlay = when (AccnotifyApp.getInstance().keyManager.themeColor) {
+            "blue" -> R.style.ThemeOverlay_Blue
+            "green" -> R.style.ThemeOverlay_Green
+            "red" -> R.style.ThemeOverlay_Red
+            "pink" -> R.style.ThemeOverlay_Pink
+            "white" -> R.style.ThemeOverlay_White
+            "black" -> R.style.ThemeOverlay_Black
+            else -> R.style.ThemeOverlay_Blue
+        }
+        theme.applyStyle(themeOverlay, true)
+        
         super.onCreate(savedInstanceState)
         binding = ActivityTutorialBinding.inflate(layoutInflater)
         setContentView(binding.root)

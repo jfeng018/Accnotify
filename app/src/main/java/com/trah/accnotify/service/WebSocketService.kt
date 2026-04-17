@@ -65,9 +65,10 @@ class WebSocketService : Service() {
     // Network callback for monitoring connectivity
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
-    // Flag to track foreground service mode
     @Volatile
-    private var isForegroundMode = true
+    private var hasEnteredForeground = false
+    @Volatile
+    private var startedAsForeground = false
 
     private val client by lazy {
         OkHttpClient.Builder()
@@ -82,36 +83,26 @@ class WebSocketService : Service() {
         super.onCreate()
         Log.i(TAG, "Service onCreate")
 
-        // Check if foreground notification should be shown
-        val app = application as AccnotifyApp
-        isForegroundMode = app.keyManager.showForegroundNotification
-
         // Register network callback
         registerNetworkCallback()
 
-        // Must always call startForeground() when started via startForegroundService(),
-        // otherwise Android O+ will crash the app after 5 seconds.
-        startForeground(NOTIFICATION_ID, createForegroundNotification())
-        if (!isForegroundMode) {
-            // User opted out of the persistent notification — remove it immediately
-            // while keeping the service alive.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } else {
-                @Suppress("DEPRECATION")
-                stopForeground(true)
-            }
-            Log.i(TAG, "Service started in background mode (without notification)")
-        } else {
-            Log.i(TAG, "Service started in foreground mode (with notification)")
-        }
+        ensureForegroundState(force = true)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand: action=${intent?.action}")
+
+        // Track if this was started via startForegroundService
+        if (intent?.getBooleanExtra(EXTRA_FOREGROUND, false) == true) {
+            startedAsForeground = true
+        }
+        ensureForegroundState(force = false)
         
         when (intent?.action) {
-            ACTION_CONNECT -> connect()
+            ACTION_CONNECT -> {
+                reconnectAttempt = 0
+                connect()
+            }
             ACTION_DISCONNECT -> disconnect()
             ACTION_SEND_ACK -> {
                 val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID)
@@ -234,6 +225,29 @@ class WebSocketService : Service() {
         networkCallback = null
     }
 
+    private fun ensureForegroundState(force: Boolean) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val showNotification = AccnotifyApp.getInstance().keyManager.showForegroundNotification
+                if (startedAsForeground && !hasEnteredForeground) {
+                    // Must call startForeground within 5s of startForegroundService
+                    startForeground(NOTIFICATION_ID, createForegroundNotification())
+                    hasEnteredForeground = true
+                    if (!showNotification) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                    }
+                } else if (showNotification && (force || !hasEnteredForeground)) {
+                    startForeground(NOTIFICATION_ID, createForegroundNotification())
+                    hasEnteredForeground = true
+                } else if (showNotification && hasEnteredForeground) {
+                    updateForegroundNotification()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update foreground state", e)
+            }
+        }
+    }
+
     private fun connect() {
         synchronized(connectionLock) {
             // Prevent concurrent connection attempts
@@ -318,7 +332,17 @@ class WebSocketService : Service() {
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 synchronized(connectionLock) {
                     if (this@WebSocketService.webSocket == webSocket) {
-                        Log.e(TAG, "WebSocket failure", t)
+                        val message = t.message.orEmpty()
+                        val isExpectedDisconnect =
+                            t is java.io.EOFException ||
+                            message.contains("Software caused connection abort", ignoreCase = true) ||
+                            message.contains("Socket closed", ignoreCase = true)
+
+                        if (isExpectedDisconnect) {
+                            Log.w(TAG, "WebSocket disconnected: ${t.message}")
+                        } else {
+                            Log.e(TAG, "WebSocket failure", t)
+                        }
                         isConnected = false
                         isConnecting = false
                         this@WebSocketService.webSocket = null
@@ -488,7 +512,6 @@ class WebSocketService : Service() {
     }
     
     private fun updateForegroundNotification() {
-        if (!isForegroundMode) return // Skip if not in foreground mode
         val notification = buildForegroundNotification()
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.notify(NOTIFICATION_ID, notification)
@@ -512,10 +535,9 @@ class WebSocketService : Service() {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
-            .setPriority(NotificationCompat.PRIORITY_MIN)  // 最低优先级
+            .setPriority(NotificationCompat.PRIORITY_LOW)  // 低优先级，保持服务存活
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setShowWhen(false)
-            .setVisibility(NotificationCompat.VISIBILITY_SECRET)  // 锁屏不显示
             .setSilent(true)  // 静音
             .build()
     }
@@ -566,6 +588,7 @@ class WebSocketService : Service() {
 
         const val EXTRA_MESSAGE_ID = "message_id"
         const val EXTRA_CONNECTED = "connected"
+        const val EXTRA_FOREGROUND = "extra_foreground"
 
         /**
          * Helper to start the service properly
@@ -575,7 +598,15 @@ class WebSocketService : Service() {
                 action = ACTION_CONNECT
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
+                val showNotification = try {
+                    AccnotifyApp.getInstance().keyManager.showForegroundNotification
+                } catch (_: Exception) { false }
+                if (showNotification) {
+                    intent.putExtra(EXTRA_FOREGROUND, true)
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             } else {
                 context.startService(intent)
             }

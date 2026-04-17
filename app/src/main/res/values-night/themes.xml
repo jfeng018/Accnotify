@@ -36,4 +36,24 @@
         <item name="itemPaddingTop">8dp</item>
         <item name="itemPaddingBottom">8dp</item>
     </style>
+
+    <!-- Theme Color Overlays (Dark) -->
+    <style name="ThemeOverlay.Blue" parent="">
+        <item name="colorPrimary">@color/theme_blue_light</item>
+    </style>
+    <style name="ThemeOverlay.Green" parent="">
+        <item name="colorPrimary">@color/theme_green_light</item>
+    </style>
+    <style name="ThemeOverlay.Red" parent="">
+        <item name="colorPrimary">@color/theme_red_light</item>
+    </style>
+    <style name="ThemeOverlay.Pink" parent="">
+        <item name="colorPrimary">@color/theme_pink_light</item>
+    </style>
+    <style name="ThemeOverlay.White" parent="">
+        <item name="colorPrimary">@color/theme_white_light</item>
+    </style>
+    <style name="ThemeOverlay.Black" parent="">
+        <item name="colorPrimary">@color/theme_black_light</item>
+    </style>
 </resources>

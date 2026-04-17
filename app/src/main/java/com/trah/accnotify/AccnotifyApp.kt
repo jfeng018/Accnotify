@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
+import androidx.appcompat.app.AppCompatDelegate
 import com.trah.accnotify.crypto.KeyManager
 import com.trah.accnotify.data.AppDatabase
 
@@ -26,6 +27,14 @@ class AccnotifyApp : Application() {
         // Initialize key manager
         keyManager = KeyManager(this)
         keyManager.ensureKeysExist()
+
+        // Apply saved light/dark mode
+        val nightMode = when (keyManager.themeMode) {
+            "light" -> AppCompatDelegate.MODE_NIGHT_NO
+            "dark" -> AppCompatDelegate.MODE_NIGHT_YES
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        AppCompatDelegate.setDefaultNightMode(nightMode)
 
         // Create notification channels
         createNotificationChannels()

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.util.Log
+import com.trah.accnotify.AccnotifyApp
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -28,7 +29,7 @@ class KeepAliveAccessibilityService : AccessibilityService() {
         Log.i(TAG, "Accessibility service connected")
         isServiceRunning = true
 
-        // Add overlay view to keep service alive (GKD approach)
+        // Add 1x1 invisible overlay view to help keep the service alive
         addAliveView()
 
         // Start WebSocket service
@@ -59,8 +60,8 @@ class KeepAliveAccessibilityService : AccessibilityService() {
 
     /**
      * Add a 1x1 pixel invisible overlay view using TYPE_ACCESSIBILITY_OVERLAY.
-     * This is the key keep-alive mechanism from GKD - the system considers the
-     * service as actively using a window, making it much harder to be killed.
+     * The system considers the service as actively using a window, making it
+     * much harder to be killed.
      */
     private fun addAliveView() {
         removeAliveView()
@@ -98,18 +99,18 @@ class KeepAliveAccessibilityService : AccessibilityService() {
     }
 
     private fun startWebSocketService() {
-        val intent = Intent(this, WebSocketService::class.java).apply {
-            action = WebSocketService.ACTION_CONNECT
+        val isRegistered = try {
+            AccnotifyApp.getInstance().keyManager.isRegistered
+        } catch (_: Exception) {
+            false
         }
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start WebSocket service", e)
+
+        if (!isRegistered) {
+            Log.i(TAG, "Skip starting WebSocket service: device not registered yet")
+            return
         }
+
+        WebSocketService.start(this)
     }
 }
 

@@ -30,11 +30,24 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val app by lazy { AccnotifyApp.getInstance() }
+
+    private fun applyThemeColor() {
+        val themeOverlay = when (app.keyManager.themeColor) {
+            "blue" -> R.style.ThemeOverlay_Blue
+            "green" -> R.style.ThemeOverlay_Green
+            "red" -> R.style.ThemeOverlay_Red
+            "pink" -> R.style.ThemeOverlay_Pink
+            "white" -> R.style.ThemeOverlay_White
+            "black" -> R.style.ThemeOverlay_Black
+            else -> R.style.ThemeOverlay_Blue
+        }
+        theme.applyStyle(themeOverlay, true)
+    }
     
-    private val homeFragment = HomeFragment()
-    private val messagesFragment = MessagesFragment()
-    private val settingsFragment = SettingsFragment()
-    private var activeFragment: Fragment = homeFragment
+    private lateinit var homeFragment: HomeFragment
+    private lateinit var messagesFragment: MessagesFragment
+    private lateinit var settingsFragment: SettingsFragment
+    private lateinit var activeFragment: Fragment
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -45,11 +58,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Apply theme color overlay before super.onCreate
+        applyThemeColor()
+        
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupNavigation()
+        setupNavigation(savedInstanceState)
+
+        val selectedTab = savedInstanceState?.getInt(STATE_SELECTED_TAB, R.id.nav_home)
+            ?: intent.getIntExtra(EXTRA_SELECTED_TAB, R.id.nav_home)
+        if (selectedTab != R.id.nav_home) {
+            binding.bottomNavigation.post {
+                binding.bottomNavigation.selectedItemId = selectedTab
+            }
+        }
+
         checkNotificationPermission()
         
         // 处理通知点击的 intent
@@ -59,6 +84,11 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         intent?.let { handleNotificationIntent(it) }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(STATE_SELECTED_TAB, binding.bottomNavigation.selectedItemId)
     }
     
     private fun handleNotificationIntent(intent: Intent) {
@@ -83,14 +113,35 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    private fun setupNavigation() {
-        supportFragmentManager.beginTransaction()
-            .add(R.id.fragmentContainer, messagesFragment, "messages").hide(messagesFragment)
-            .add(R.id.fragmentContainer, settingsFragment, "settings").hide(settingsFragment)
-            .add(R.id.fragmentContainer, homeFragment, "home")
-            .commit()
+    private fun setupNavigation(savedInstanceState: Bundle?) {
+
+        if (savedInstanceState == null) {
+            homeFragment = HomeFragment()
+            messagesFragment = MessagesFragment()
+            settingsFragment = SettingsFragment()
+            activeFragment = homeFragment
+            supportFragmentManager.beginTransaction()
+                .add(R.id.fragmentContainer, messagesFragment, "messages").hide(messagesFragment)
+                .add(R.id.fragmentContainer, settingsFragment, "settings").hide(settingsFragment)
+                .add(R.id.fragmentContainer, homeFragment, "home")
+                .commit()
+        } else {
+            homeFragment = (supportFragmentManager.findFragmentByTag("home") as? HomeFragment) ?: HomeFragment()
+            messagesFragment = (supportFragmentManager.findFragmentByTag("messages") as? MessagesFragment) ?: MessagesFragment()
+            settingsFragment = (supportFragmentManager.findFragmentByTag("settings") as? SettingsFragment) ?: SettingsFragment()
+            // Restore activeFragment based on visibility
+            activeFragment = when {
+                !homeFragment.isHidden -> homeFragment
+                !messagesFragment.isHidden -> messagesFragment
+                !settingsFragment.isHidden -> settingsFragment
+                else -> homeFragment
+            }
+        }
 
         binding.bottomNavigation.setOnItemSelectedListener { item ->
+            if (supportFragmentManager.isStateSaved) {
+                return@setOnItemSelectedListener false
+            }
             when (item.itemId) {
                 R.id.nav_home -> {
                     if (activeFragment != homeFragment) {
@@ -200,14 +251,7 @@ class MainActivity : AppCompatActivity() {
         }
         stopService(stopIntent)
 
-        val startIntent = Intent(this, WebSocketService::class.java).apply {
-            action = WebSocketService.ACTION_CONNECT
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(startIntent)
-        } else {
-            startService(startIntent)
-        }
+        WebSocketService.start(this)
     }
 
     private fun checkNotificationPermission() {
@@ -224,14 +268,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun startWebSocketServiceIfRegistered() {
         if (app.keyManager.isRegistered) {
-            val intent = Intent(this, WebSocketService::class.java).apply {
-                action = WebSocketService.ACTION_CONNECT
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
+            WebSocketService.start(this)
         }
+    }
+
+    companion object {
+        private const val EXTRA_SELECTED_TAB = "selected_tab"
+        private const val STATE_SELECTED_TAB = "state_selected_tab"
     }
 }

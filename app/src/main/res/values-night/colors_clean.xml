@@ -10,6 +10,14 @@
     <color name="clean_primary">#007AFF</color> <!-- System Blue, good contrast with white text -->
     <color name="clean_primary_pressed">#0062CC</color>
     
+    <!-- Theme Color Options (Dark) -->
+    <color name="theme_blue_light">#007AFF</color>
+    <color name="theme_green_light">#34C759</color>
+    <color name="theme_red_light">#FF3B30</color>
+    <color name="theme_pink_light">#FF2D55</color>
+    <color name="theme_white_light">#8E8E93</color>
+    <color name="theme_black_light">#F5F5F7</color>
+    
     <color name="status_clean_disconnected_bg">#1C2A2F</color>
     <color name="status_clean_disconnected_text">#80CBC4</color>
     <color name="status_clean_connected_bg">#1B2E21</color>

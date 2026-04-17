@@ -67,6 +67,17 @@ class KeepAliveJobService : JobService() {
 
     override fun onStartJob(params: JobParameters?): Boolean {
         Log.i(TAG, "Keep-alive job started")
+
+        val isRegistered = try {
+            com.trah.accnotify.AccnotifyApp.getInstance().keyManager.isRegistered
+        } catch (_: Exception) {
+            false
+        }
+
+        if (!isRegistered) {
+            Log.i(TAG, "Skip keep-alive start: device not registered")
+            return false
+        }
         
         // Start WebSocket service
         try {
