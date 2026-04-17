@@ -92,7 +92,18 @@ object NotificationHelper {
         // 检查是否包含 "--- 完整数据 ---" 分隔符，只显示摘要部分
         val separatorIndex = trimmed.indexOf("--- 完整数据 ---")
         if (separatorIndex > 0) {
-            return trimmed.substring(0, separatorIndex).trim() + "\n(点击查看完整数据)"
+            val summary = trimmed.substring(0, separatorIndex).trim()
+            // 尝试将摘要部分的 JSON 转为可读文本
+            val readable = try {
+                val json = com.google.gson.JsonParser.parseString(summary)
+                if (json.isJsonObject) {
+                    json.asJsonObject.entrySet().joinToString("\n") { (k, v) ->
+                        val value = if (v.isJsonPrimitive && v.asJsonPrimitive.isString) v.asString else v.toString()
+                        "$k: $value"
+                    }
+                } else summary
+            } catch (_: Exception) { summary }
+            return readable + "\n(点击查看完整数据)"
         }
         
         // 检查是否是 JSON 格式

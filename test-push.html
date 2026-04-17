@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Accnotify · Push Tester</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #f7f8fa;
+    --bg2:       #ffffff;
+    --bg3:       #eef0f4;
+    --border:    #dce0e8;
+    --accent:    #3b82f6;
+    --accent2:   #6366f1;
+    --warn:      #f59e0b;
+    --text:      #1e293b;
+    --text2:     #334155;
+    --muted:     #94a3b8;
+    --success:   #10b981;
+    --error:     #ef4444;
+    --mono:      'JetBrains Mono', monospace;
+    --sans:      'Inter', system-ui, sans-serif;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow:    0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+    --radius:    10px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.7;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Layout ── */
+  .shell {
+    display: grid;
+    grid-template-rows: 60px 1fr;
+    grid-template-columns: 460px 1fr;
+    height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px rgba(59,130,246,0.4);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+
+  .logo-name {
+    font-family: var(--mono);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--text);
+  }
+
+  .logo-badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+    background: rgba(59,130,246,0.1);
+    padding: 2px 10px;
+    border-radius: 20px;
+  }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--bg3);
+    color: var(--muted);
+    transition: all .2s;
+  }
+  .status-pill .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+    transition: background .2s;
+  }
+  .status-pill.ok { background: rgba(16,185,129,0.1); color: var(--success); }
+  .status-pill.ok .status-dot { background: var(--success); }
+  .status-pill.err { background: rgba(239,68,68,0.1); color: var(--error); }
+  .status-pill.err .status-dot { background: var(--error); }
+
+  /* ── Left panel ── */
+  .left-panel {
+    overflow-y: auto;
+    border-right: 1px solid var(--border);
+    background: var(--bg2);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .config-section {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+
+  .section-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text2);
+    margin-bottom: 6px;
+  }
+
+  .field input, .field textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--text);
+    background: var(--bg);
+    transition: border-color .15s, box-shadow .15s;
+    outline: none;
+  }
+  .field input:focus, .field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+  }
+  .field input::placeholder, .field textarea::placeholder { color: var(--muted); }
+  .field textarea { resize: vertical; min-height: 60px; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    background: var(--bg2);
+  }
+  .tab {
+    padding: 13px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all .15s;
+  }
+  .tab:hover { color: var(--text2); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .tab-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Buttons ── */
+  .btn-send {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: var(--sans);
+    cursor: pointer;
+    margin-top: 18px;
+    transition: all .15s;
+    box-shadow: var(--shadow);
+  }
+  .btn-send:hover { background: #2563eb; box-shadow: var(--shadow-md); transform: translateY(-1px); }
+  .btn-send:active { transform: translateY(0); }
+  .btn-send:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .btn-send.loading::after { content: ' …'; }
+
+  /* ── Image drop ── */
+  .image-drop {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    position: relative;
+    background: var(--bg);
+  }
+  .image-drop:hover, .image-drop.drag-over { border-color: var(--accent); background: rgba(59,130,246,0.04); }
+  .image-drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .image-drop-icon { font-size: 36px; margin-bottom: 8px; }
+  .image-drop-text { font-size: 14px; color: var(--muted); }
+  .image-drop-text span { color: var(--accent); font-weight: 500; }
+
+  .image-preview-wrap {
+    display: none;
+    align-items: center;
+    gap: 16px;
+    padding: 14px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    margin-top: 12px;
+    background: var(--bg);
+  }
+  .image-preview-wrap.has-image { display: flex; }
+  .image-preview-wrap img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+  .image-preview-meta { flex: 1; }
+  .image-preview-name { font-size: 14px; font-weight: 500; color: var(--text); }
+  .image-preview-size { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .btn-remove-img {
+    background: none; border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px;
+    font-size: 12px; color: var(--error); cursor: pointer; margin-top: 6px;
+    transition: all .15s;
+  }
+  .btn-remove-img:hover { background: rgba(239,68,68,0.06); border-color: var(--error); }
+
+  /* ── Webhook types ── */
+  .webhook-types { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .wh-type {
+    padding: 7px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--bg);
+    color: var(--text2);
+    border: 1.5px solid var(--border);
+    transition: all .15s;
+  }
+  .wh-type:hover { border-color: var(--accent); color: var(--accent); }
+  .wh-type.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── Payload editor ── */
+  .payload-editor { margin-top: 8px; }
+  .payload-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px;
+    background: var(--bg3);
+    border: 1.5px solid var(--border);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+  }
+  .payload-bar-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .btn-fmt {
+    font-size: 12px; font-weight: 500; color: var(--accent); background: none; border: 1px solid var(--accent);
+    border-radius: 5px; padding: 3px 10px; cursor: pointer; transition: all .15s;
+  }
+  .btn-fmt:hover { background: var(--accent); color: #fff; }
+
+  .payload-editor textarea {
+    width: 100%;
+    min-height: 220px;
+    padding: 14px;
+    border: 1.5px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+    background: var(--bg2);
+    resize: vertical;
+    outline: none;
+  }
+  .payload-editor textarea:focus { border-color: var(--accent); }
+
+  /* ── Right panel ── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  .response-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+  .response-title { font-size: 14px; font-weight: 600; color: var(--text); }
+  .response-meta { margin-left: auto; display: flex; gap: 16px; }
+  .res-status { font-family: var(--mono); font-size: 13px; font-weight: 600; }
+  .res-time { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+  .btn-clear {
+    font-size: 13px; font-weight: 500; color: var(--muted); background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 14px; cursor: pointer; transition: all .15s;
+  }
+  .btn-clear:hover { background: var(--border); color: var(--text2); }
+
+  .response-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px;
+  }
+
+  /* ── Log entries ── */
+  .log-entry {
+    margin-bottom: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg2);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  .log-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .log-head:hover { background: var(--bg); }
+
+  .log-method {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 5px;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .log-url {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+
+  .log-badge {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 12px;
+  }
+  .log-badge.ok  { color: var(--success); background: rgba(16,185,129,0.1); }
+  .log-badge.err { color: var(--error);   background: rgba(239,68,68,0.1); }
+
+  .log-time {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .log-body {
+    padding: 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .log-section-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    margin-top: 14px;
+    font-weight: 600;
+  }
+
+  .log-section-title:first-child { margin-top: 0; }
+
+  pre {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .json-key   { color: #2563eb; }
+  .json-str   { color: #059669; }
+  .json-num   { color: #d97706; }
+  .json-bool  { color: #c026d3; }
+  .json-null  { color: #94a3b8; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    color: var(--muted);
+    padding: 60px;
+  }
+  .empty-icon { font-size: 48px; opacity: 0.3; }
+  .empty-text { font-size: 15px; }
+
+  /* ── Scrollbars ── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+  /* ── Hint ── */
+  .hint {
+    font-size: 13px;
+    color: var(--text2);
+    background: rgba(59,130,246,0.06);
+    border-radius: 8px;
+    padding: 12px 16px;
+    border-left: 3px solid var(--accent);
+    line-height: 1.7;
+    margin-bottom: 14px;
+  }
+  .hint code {
+    font-family: var(--mono);
+    font-size: 13px;
+    background: rgba(59,130,246,0.08);
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: var(--accent);
+  }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; grid-template-rows: 56px 1fr; }
+    .right-panel { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      <span class="logo-name">ACCNOTIFY</span>
+      <span class="logo-badge">PUSH TESTER</span>
+    </div>
+    <div class="header-right">
+      <div class="status-pill" id="statusPill">
+        <div class="status-dot"></div>
+        <span id="statusText">idle</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Left panel -->
+  <div class="left-panel">
+    <!-- Config -->
+    <div class="config-section">
+      <div class="section-label">连接配置</div>
+      <div class="field">
+        <label>服务器地址</label>
+        <input id="serverUrl" type="text" placeholder="https://your-server.example.com" value="">
+      </div>
+      <div class="field">
+        <label>Device Key</label>
+        <input id="deviceKey" type="text" placeholder="在 APP 首页查看你的 Device Key">
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <div class="tab active" data-tab="push">JSON 推送</div>
+      <div class="tab" data-tab="image">图片推送</div>
+      <div class="tab" data-tab="webhook">Webhook</div>
+      <div class="tab" data-tab="simple">简单推送</div>
+    </div>
+
+    <!-- Tab content -->
+    <div class="tab-content">
+
+      <!-- ── Push tab ── -->
+      <div class="tab-panel active" id="tab-push">
+        <div class="hint">
+          POST 请求到 <code>/push/:device_key</code>，支持 JSON 格式自定义通知内容。
+        </div>
+        <div class="field">
+          <label>标题 (title)</label>
+          <input type="text" id="pushTitle" placeholder="例如：服务器报警" value="Accnotify 测试通知">
+        </div>
+        <div class="field">
+          <label>正文 (body)</label>
+          <textarea id="pushBody" rows="3" placeholder="通知内容，支持 Markdown 格式">这是一条来自 Web 测试页面的推送消息。
+
+当前时间：请点击发送查看实时时间戳。支持 **Markdown** 格式。</textarea>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>分组 (group)</label>
+            <input type="text" id="pushGroup" placeholder="可选，用于消息归组" value="测试">
+          </div>
+          <div class="field">
+            <label>声音 (sound)</label>
+            <input type="text" id="pushSound" placeholder="default">
+          </div>
+        </div>
+        <div class="field">
+          <label>跳转链接 (url)</label>
+          <input type="text" id="pushUrl" placeholder="https://..." value="https://github.com/trah01/Accnotify">
+        </div>
+        <button class="btn-send" id="btnSendPush" onclick="sendPush()">发送通知</button>
+      </div>
+
+      <!-- ── Image tab ── -->
+      <div class="tab-panel" id="tab-image">
+        <div class="hint">
+          推送带图片的通知。图片可以是远程 URL 或本地文件（Base64 编码）。
+        </div>
+        <div class="field">
+          <label>标题 (title)</label>
+          <input type="text" id="imgTitle" placeholder="图片通知标题" value="图片推送测试">
+        </div>
+        <div class="field">
+          <label>正文 (body)</label>
+          <textarea id="imgBody" rows="2" placeholder="可选说明文字">这是一条带图片的推送通知，检查客户端是否能正确显示图片。</textarea>
+        </div>
+
+        <div>
+          <div class="section-label" style="margin-bottom:10px">图片来源</div>
+          <!-- URL mode -->
+          <div class="field">
+            <label>图片 URL（远程）</label>
+            <input type="text" id="imgUrl" placeholder="https://example.com/photo.jpg" oninput="onImgUrlInput()">
+          </div>
+          <div style="text-align:center; color:var(--muted); font-size:13px; margin: 8px 0;">— 或 —</div>
+          <!-- File upload mode -->
+          <div class="image-drop" id="imageDrop">
+            <input type="file" id="imgFile" accept="image/*" onchange="onFileSelect(this)">
+            <div class="image-drop-icon">🖼</div>
+            <div class="image-drop-text">拖拽图片到此处，或 <span>点击上传</span></div>
+            <div class="image-drop-text" style="margin-top:6px; font-size:12px; color:var(--muted)">支持 JPG / PNG / GIF / WebP（编码为 Base64）</div>
+          </div>
+          <div class="image-preview-wrap" id="imagePreviewWrap">
+            <img id="imagePreview" src="" alt="">
+            <div class="image-preview-meta">
+              <div class="image-preview-name" id="imageName"></div>
+              <div class="image-preview-size" id="imageSize"></div>
+              <button class="btn-remove-img" onclick="clearImage()">✕ 移除</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="hint" id="imgHint" style="display:none">
+          ⚠ Base64 图片较大，推荐小于 200KB 以免超出服务端限制。
+        </div>
+
+        <button class="btn-send" id="btnSendImg" onclick="sendImage()">发送图片通知</button>
+      </div>
+
+      <!-- ── Webhook tab ── -->
+      <div class="tab-panel" id="tab-webhook">
+        <div class="hint">
+          模拟各平台 Webhook 回调。选择平台后会填充对应的示例数据，你也可以自行修改。
+        </div>
+        <div>
+          <div class="section-label" style="margin-bottom:10px">Webhook 类型</div>
+          <div class="webhook-types">
+            <div class="wh-type active" data-wh="generic" onclick="selectWebhook('generic')">通用</div>
+            <div class="wh-type" data-wh="github" onclick="selectWebhook('github')">GitHub</div>
+            <div class="wh-type" data-wh="gitlab" onclick="selectWebhook('gitlab')">GitLab</div>
+            <div class="wh-type" data-wh="docker" onclick="selectWebhook('docker')">Docker Hub</div>
+            <div class="wh-type" data-wh="gitea" onclick="selectWebhook('gitea')">Gitea</div>
+          </div>
+        </div>
+
+        <div class="payload-editor">
+          <div class="payload-bar">
+            <span class="payload-bar-label">JSON Payload</span>
+            <button class="btn-fmt" onclick="formatPayload()">格式化</button>
+          </div>
+          <textarea id="webhookPayload" spellcheck="false"></textarea>
+        </div>
+
+        <button class="btn-send" id="btnSendWh" onclick="sendWebhook()">发送 Webhook</button>
+      </div>
+
+      <!-- ── Simple tab ── -->
+      <div class="tab-panel" id="tab-simple">
+        <div class="hint">
+          GET 请求推送，兼容 Bark URL 格式，无需构造 JSON 请求体：<br>
+          <code>/push/:device_key/:title/:body</code>
+        </div>
+        <div class="field">
+          <label>标题</label>
+          <input type="text" id="simpleTitle" placeholder="通知标题" value="来自 GET 请求的推送">
+        </div>
+        <div class="field">
+          <label>内容</label>
+          <input type="text" id="simpleBody" placeholder="通知内容" value="这是一条通过简单 GET 请求发送的推送通知，适用于 Bark 兼容场景和快捷指令。">
+        </div>
+        <div class="field">
+          <label>预览 URL（只读）</label>
+          <input type="text" id="simplePreviewUrl" readonly style="color:var(--muted); font-size:13px; background:var(--bg3)">
+        </div>
+        <button class="btn-send" onclick="sendSimple()">发送</button>
+      </div>
+
+    </div><!-- end tab-content -->
+  </div><!-- end left-panel -->
+
+  <!-- Right panel -->
+  <div class="right-panel">
+    <div class="response-header">
+      <span class="response-title">请求日志</span>
+      <div class="response-meta">
+        <span class="res-status" id="resStatus"></span>
+        <span class="res-time" id="resTime"></span>
+      </div>
+      <button class="btn-clear" onclick="clearLog()">清空</button>
+    </div>
+    <div class="response-body" id="responseBody">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📡</div>
+        <div class="empty-text">填写连接配置后发送请求，在此查看响应</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end shell -->
+
+<script>
+// ── State ──
+let currentTab = 'push';
+let currentWebhook = 'generic';
+let base64ImageData = null;
+let base64ImageSize = 0;
+
+// ── Tab switching ──
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    currentTab = t.dataset.tab;
+    document.getElementById('tab-' + currentTab).classList.add('active');
+    if (currentTab === 'simple') updateSimplePreview();
+  });
+});
+
+// ── Config getters ──
+function getServer() { return (document.getElementById('serverUrl').value.trim() || '').replace(/\/$/, ''); }
+function getDeviceKey() { return document.getElementById('deviceKey').value.trim(); }
+
+function validate() {
+  if (!getServer()) { alert('请填写服务器地址'); return false; }
+  if (!getDeviceKey()) { alert('请填写 Device Key'); return false; }
+  return true;
+}
+
+// ── Simple push preview ──
+['simpleTitle','simpleBody'].forEach(id =>
+  document.getElementById(id).addEventListener('input', updateSimplePreview)
+);
+document.getElementById('serverUrl').addEventListener('input', updateSimplePreview);
+document.getElementById('deviceKey').addEventListener('input', updateSimplePreview);
+
+function updateSimplePreview() {
+  const s = getServer(), k = getDeviceKey();
+  const t = encodeURIComponent(document.getElementById('simpleTitle').value || 'title');
+  const b = encodeURIComponent(document.getElementById('simpleBody').value || 'body');
+  document.getElementById('simplePreviewUrl').value = `${s}/push/${k}/${t}/${b}`;
+}
+
+// ── Image handling ──
+const imageDrop = document.getElementById('imageDrop');
+
+imageDrop.addEventListener('dragover', e => { e.preventDefault(); imageDrop.classList.add('drag-over'); });
+imageDrop.addEventListener('dragleave', () => imageDrop.classList.remove('drag-over'));
+imageDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  imageDrop.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) processImageFile(file);
+});
+
+function onFileSelect(input) {
+  if (input.files[0]) processImageFile(input.files[0]);
+}
+
+function processImageFile(file) {
+  base64ImageSize = file.size;
+  const reader = new FileReader();
+  reader.onload = e => {
+    base64ImageData = e.target.result;
+    document.getElementById('imgUrl').value = '';
+    const wrap = document.getElementById('imagePreviewWrap');
+    document.getElementById('imagePreview').src = base64ImageData;
+    document.getElementById('imageName').textContent = file.name;
+    document.getElementById('imageSize').textContent = formatBytes(file.size);
+    wrap.classList.add('has-image');
+    imageDrop.style.display = 'none';
+    document.getElementById('imgHint').style.display = file.size > 200 * 1024 ? 'block' : 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function onImgUrlInput() {
+  if (document.getElementById('imgUrl').value) clearImage(true);
+}
+
+function clearImage(keepDrop) {
+  base64ImageData = null;
+  document.getElementById('imgFile').value = '';
+  document.getElementById('imagePreviewWrap').classList.remove('has-image');
+  imageDrop.style.display = '';
+  document.getElementById('imgHint').style.display = 'none';
+  if (!keepDrop) document.getElementById('imgUrl').value = '';
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+  return (b/1024/1024).toFixed(2) + ' MB';
+}
+
+// ── Webhook templates ──
+const WH_TEMPLATES = {
+  generic: {
+    path: '/webhook/DEVICE_KEY',
+    payload: {
+      title: '系统监控告警',
+      body: '服务器 web-01 的 CPU 使用率超过 90%，持续 5 分钟。\\n\\n当前负载：12.5\\n内存使用：87%\\n磁盘 IO：高',
+      group: '监控',
+      url: 'https://monitor.example.com/alerts/12345'
+    }
+  },
+  github: {
+    path: '/webhook/DEVICE_KEY/github',
+    payload: {
+      ref: 'refs/heads/main',
+      commits: [
+        { message: 'feat: 添加 WebSocket 心跳保活机制', author: { name: 'trah' }, id: 'a1b2c3d4', url: 'https://github.com/trah01/Accnotify/commit/a1b2c3d4' },
+        { message: 'fix: 修复消息列表滚动卡顿问题', author: { name: 'trah' }, id: 'e5f6g7h8', url: 'https://github.com/trah01/Accnotify/commit/e5f6g7h8' }
+      ],
+      repository: { name: 'Accnotify', full_name: 'trah01/Accnotify', html_url: 'https://github.com/trah01/Accnotify' },
+      pusher: { name: 'trah' },
+      compare: 'https://github.com/trah01/Accnotify/compare/v1.0.0...v1.1.0',
+      head_commit: { message: 'fix: 修复消息列表滚动卡顿问题', author: { name: 'trah' } }
+    }
+  },
+  gitlab: {
+    path: '/webhook/DEVICE_KEY/gitlab',
+    payload: {
+      object_kind: 'push',
+      ref: 'refs/heads/develop',
+      user_name: 'trah',
+      total_commits_count: 3,
+      commits: [
+        { message: 'refactor: 重构数据库存储层，提升查询性能', author: { name: 'trah' } },
+        { message: 'test: 增加推送接口集成测试', author: { name: 'trah' } },
+        { message: 'docs: 更新 API 文档和部署说明', author: { name: 'trah' } }
+      ],
+      project: { name: 'accnotify-server', web_url: 'https://gitlab.com/trah/accnotify-server', namespace: 'trah' }
+    }
+  },
+  docker: {
+    path: '/webhook/DEVICE_KEY/docker',
+    payload: {
+      callback_url: 'https://registry.hub.docker.com/u/trah01/accnotify-server/hook/xxxx',
+      push_data: {
+        pusher: 'trah01',
+        pushed_at: Math.floor(Date.now()/1000),
+        tag: 'v1.2.0',
+        images: ['trah01/accnotify-server:v1.2.0']
+      },
+      repository: {
+        repo_name: 'trah01/accnotify-server',
+        namespace: 'trah01',
+        name: 'accnotify-server',
+        repo_url: 'https://hub.docker.com/r/trah01/accnotify-server',
+        description: 'Accnotify 推送通知服务器',
+        star_count: 5,
+        is_official: false
+      }
+    }
+  },
+  gitea: {
+    path: '/webhook/DEVICE_KEY/gitea',
+    payload: {
+      ref: 'refs/heads/main',
+      commits: [
+        { message: 'feat: 支持 Cloudflare Workers 部署方式', author: { name: 'trah' }, id: 'abc123', url: 'https://git.example.com/trah/accnotify/commit/abc123' },
+        { message: 'chore: 升级 Go 版本至 1.22', author: { name: 'trah' }, id: 'def456', url: 'https://git.example.com/trah/accnotify/commit/def456' }
+      ],
+      repository: { name: 'accnotify', full_name: 'trah/accnotify', html_url: 'https://git.example.com/trah/accnotify' },
+      pusher: { login: 'trah', full_name: 'trah' },
+      compare_url: 'https://git.example.com/trah/accnotify/compare/v1.0...v1.1'
+    }
+  }
+};
+
+function selectWebhook(type) {
+  currentWebhook = type;
+  document.querySelectorAll('.wh-type').forEach(el => el.classList.toggle('active', el.dataset.wh === type));
+  const tpl = WH_TEMPLATES[type];
+  document.getElementById('webhookPayload').value = JSON.stringify(tpl.payload, null, 2);
+}
+
+function formatPayload() {
+  try {
+    const v = document.getElementById('webhookPayload').value;
+    document.getElementById('webhookPayload').value = JSON.stringify(JSON.parse(v), null, 2);
+  } catch { /* invalid JSON */ }
+}
+
+// initialize webhook tab
+selectWebhook('generic');
+
+// ── Send helpers ──
+async function doRequest(method, url, body, buttonId) {
+  const btn = document.getElementById(buttonId);
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+
+  setStatus('sending');
+  const start = Date.now();
+
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== null) opts.body = JSON.stringify(body);
+
+  try {
+    const res = await fetch(url, opts);
+    const elapsed = Date.now() - start;
+    let resBody = await res.text();
+    try { resBody = JSON.parse(resBody); } catch {}
+    setStatus(res.ok ? 'ok' : 'error', res.status, elapsed);
+    addLog(method, url, body, res.status, resBody, elapsed);
+  } catch (err) {
+    const elapsed = Date.now() - start;
+    setStatus('error', 0, elapsed);
+    addLog(method, url, body, 0, { error: err.message }, elapsed);
+  }
+
+  if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+}
+
+// ── Send functions ──
+function sendPush() {
+  if (!validate()) return;
+  const payload = {};
+  const title = document.getElementById('pushTitle').value.trim();
+  const body = document.getElementById('pushBody').value.trim();
+  const group = document.getElementById('pushGroup').value.trim();
+  const sound = document.getElementById('pushSound').value.trim();
+  const url = document.getElementById('pushUrl').value.trim();
+  if (title) payload.title = title;
+  if (body)  payload.body  = body;
+  if (group) payload.group = group;
+  if (sound) payload.sound = sound;
+  if (url)   payload.url   = url;
+  doRequest('POST', `${getServer()}/push/${getDeviceKey()}`, payload, 'btnSendPush');
+}
+
+function sendImage() {
+  if (!validate()) return;
+  const payload = {};
+  const title = document.getElementById('imgTitle').value.trim();
+  const body  = document.getElementById('imgBody').value.trim();
+  if (title) payload.title = title;
+  if (body)  payload.body  = body;
+
+  if (base64ImageData) {
+    payload.image = base64ImageData;
+  } else {
+    const imgUrl = document.getElementById('imgUrl').value.trim();
+    if (!imgUrl) { alert('请选择图片或填写图片 URL'); return; }
+    payload.image = imgUrl;
+  }
+
+  doRequest('POST', `${getServer()}/push/${getDeviceKey()}`, payload, 'btnSendImg');
+}
+
+function sendWebhook() {
+  if (!validate()) return;
+  let payload;
+  try {
+    payload = JSON.parse(document.getElementById('webhookPayload').value);
+  } catch {
+    alert('JSON 格式错误，请检查 Payload'); return;
+  }
+
+  const tpl = WH_TEMPLATES[currentWebhook];
+  const path = tpl.path.replace('DEVICE_KEY', getDeviceKey());
+  doRequest('POST', getServer() + path, payload, 'btnSendWh');
+}
+
+function sendSimple() {
+  if (!validate()) return;
+  const title = encodeURIComponent(document.getElementById('simpleTitle').value || 'test');
+  const body  = encodeURIComponent(document.getElementById('simpleBody').value || 'hello');
+  const url = `${getServer()}/push/${getDeviceKey()}/${title}/${body}`;
+
+  setStatus('sending');
+  const start = Date.now();
+  const btn = document.querySelector('#tab-simple .btn-send');
+  btn.disabled = true; btn.classList.add('loading');
+
+  fetch(url).then(async res => {
+    const elapsed = Date.now() - start;
+    let rb = await res.text();
+    try { rb = JSON.parse(rb); } catch {}
+    setStatus(res.ok ? 'ok' : 'error', res.status, elapsed);
+    addLog('GET', url, null, res.status, rb, elapsed);
+  }).catch(err => {
+    setStatus('error', 0, Date.now() - start);
+    addLog('GET', url, null, 0, { error: err.message }, 0);
+  }).finally(() => { btn.disabled = false; btn.classList.remove('loading'); });
+}
+
+// ── Status ──
+function setStatus(state, code, ms) {
+  const pill = document.getElementById('statusPill');
+  const text = document.getElementById('statusText');
+  pill.className = 'status-pill';
+  if (state === 'sending') { text.textContent = 'sending...'; return; }
+  if (state === 'ok')  { pill.classList.add('ok');  text.textContent = `${code} · ${ms}ms`; }
+  if (state === 'error') { pill.classList.add('err'); text.textContent = code ? `${code} · ${ms}ms` : 'network error'; }
+}
+
+// ── Log ──
+function clearLog() {
+  document.getElementById('responseBody').innerHTML = `
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">📡</div>
+      <div class="empty-text">填写连接配置后发送请求，在此查看响应</div>
+    </div>`;
+  document.getElementById('statusPill').className = 'status-pill';
+  document.getElementById('statusText').textContent = 'idle';
+}
+
+function addLog(method, url, reqBody, statusCode, resBody, elapsed) {
+  const container = document.getElementById('responseBody');
+  const empty = document.getElementById('emptyState');
+  if (empty) empty.remove();
+
+  const isOk = statusCode >= 200 && statusCode < 300;
+  const now = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+
+  let reqSection = '';
+  if (reqBody !== null) {
+    reqSection = `<div class="log-section-title">Request Body</div><pre>${syntaxHL(reqBody)}</pre>`;
+  }
+
+  entry.innerHTML = `
+    <div class="log-head">
+      <span class="log-method">${method}</span>
+      <span class="log-url">${url}</span>
+      <span class="log-badge ${isOk ? 'ok' : 'err'}">${statusCode || 'ERR'}</span>
+      <span class="log-time">${elapsed}ms · ${now}</span>
+    </div>
+    <div class="log-body">
+      ${reqSection}
+      <div class="log-section-title">Response</div>
+      <pre>${syntaxHL(resBody)}</pre>
+    </div>`;
+
+  const head = entry.querySelector('.log-head');
+  const body = entry.querySelector('.log-body');
+  head.addEventListener('click', () => {
+    body.style.display = body.style.display === 'none' ? '' : 'none';
+  });
+
+  container.insertBefore(entry, container.firstChild);
+}
+
+function syntaxHL(obj) {
+  if (obj === null || obj === undefined) return '<span class="json-null">null</span>';
+  let str;
+  if (typeof obj === 'string') {
+    str = obj;
+  } else {
+    str = JSON.stringify(obj, (k, v) => {
+      if (typeof v === 'string' && v.startsWith('data:image') && v.length > 120) {
+        return v.slice(0, 80) + `…[${formatBytes(Math.ceil(v.length * 0.75))}]`;
+      }
+      return v;
+    }, 2);
+  }
+  return str.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, m => {
+    let cls = 'json-num';
+    if (/^"/.test(m)) cls = /:$/.test(m) ? 'json-key' : 'json-str';
+    else if (/true|false/.test(m)) cls = 'json-bool';
+    else if (/null/.test(m)) cls = 'json-null';
+    return `<span class="${cls}">${m}</span>`;
+  });
+}
+
+// ── Init ──
+updateSimplePreview();
+</script>
+</body>
+</html>

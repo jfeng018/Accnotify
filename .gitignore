@@ -104,3 +104,5 @@ docs/internal/
 config.local.*
 *.secret.*
 secrets/
+node_modules/
+*.wrangler

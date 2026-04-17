@@ -66,12 +66,14 @@ func (h *WebhookHandler) HandleGenericWebhook(c *gin.Context) {
 	if err := json.Unmarshal(body, &jsonData); err == nil {
 		// 智能解析 JSON 内容，提取有意义的标题和正文
 		title, parsedBody := h.parseGenericJSON(jsonData)
-		h.sendWebhookMessage(deviceKey, device, title, parsedBody, c)
+		// Extract image field if present
+		image, _ := jsonData["image"].(string)
+		h.sendWebhookMessage(deviceKey, device, title, parsedBody, image, c)
 		return
 	}
 
 	// If not JSON, send as plain text
-	h.sendWebhookMessage(deviceKey, device, "Webhook", string(body), c)
+	h.sendWebhookMessage(deviceKey, device, "Webhook", string(body), "", c)
 }
 
 // parseGenericJSON attempts to extract meaningful title and body from generic JSON
@@ -179,19 +181,39 @@ func (h *WebhookHandler) HandleGitHubWebhook(c *gin.Context) {
 		return
 	}
 
-	var webhook model.GitHubWebhook
-	if err := c.ShouldBindJSON(&webhook); err != nil {
-		h.sendWebhookMessage(deviceKey, device, "GitHub", "Invalid GitHub webhook format", c)
+	// Read raw body first to allow fallback parsing
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		h.sendWebhookMessage(deviceKey, device, "GitHub", "Failed to read webhook body", "", c)
 		return
 	}
 
-	// Parse GitHub event type
+	var webhook model.GitHubWebhook
+	if err := json.Unmarshal(bodyBytes, &webhook); err != nil {
+		h.sendWebhookMessage(deviceKey, device, "GitHub", "Invalid GitHub webhook format", "", c)
+		return
+	}
+
+	// Parse GitHub event type from header; default to "push" if missing
 	eventType := c.GetHeader("X-GitHub-Event")
+	if eventType == "" {
+		// Infer event type from payload structure
+		var raw map[string]interface{}
+		if json.Unmarshal(bodyBytes, &raw) == nil {
+			if _, hasCommits := raw["commits"]; hasCommits {
+				eventType = "push"
+			} else if _, hasPR := raw["pull_request"]; hasPR {
+				eventType = "pull_request"
+			} else if _, hasIssue := raw["issue"]; hasIssue {
+				eventType = "issues"
+			}
+		}
+	}
 
 	title := "GitHub"
-	body := h.formatGitHubWebhook(&webhook, eventType)
+	body := h.formatGitHubWebhook(&webhook, bodyBytes, eventType)
 
-	h.sendWebhookMessage(deviceKey, device, title, body, c)
+	h.sendWebhookMessage(deviceKey, device, title, body, "", c)
 }
 
 // HandleGitLabWebhook handles POST /webhook/:device_key/gitlab
@@ -216,14 +238,14 @@ func (h *WebhookHandler) HandleGitLabWebhook(c *gin.Context) {
 
 	var webhook model.GitLabWebhook
 	if err := c.ShouldBindJSON(&webhook); err != nil {
-		h.sendWebhookMessage(deviceKey, device, "GitLab", "Invalid GitLab webhook format", c)
+		h.sendWebhookMessage(deviceKey, device, "GitLab", "Invalid GitLab webhook format", "", c)
 		return
 	}
 
 	title := "GitLab"
 	body := h.formatGitLabWebhook(&webhook)
 
-	h.sendWebhookMessage(deviceKey, device, title, body, c)
+	h.sendWebhookMessage(deviceKey, device, title, body, "", c)
 }
 
 // HandleDockerHubWebhook handles POST /webhook/:device_key/docker
@@ -248,14 +270,14 @@ func (h *WebhookHandler) HandleDockerHubWebhook(c *gin.Context) {
 
 	var webhook model.DockerHubWebhook
 	if err := c.ShouldBindJSON(&webhook); err != nil {
-		h.sendWebhookMessage(deviceKey, device, "Docker Hub", "Invalid Docker Hub webhook format", c)
+		h.sendWebhookMessage(deviceKey, device, "Docker Hub", "Invalid Docker Hub webhook format", "", c)
 		return
 	}
 
 	title := "Docker Hub"
 	body := h.formatDockerHubWebhook(&webhook)
 
-	h.sendWebhookMessage(deviceKey, device, title, body, c)
+	h.sendWebhookMessage(deviceKey, device, title, body, "", c)
 }
 
 // HandleGiteaWebhook handles POST /webhook/:device_key/gitea
@@ -280,7 +302,7 @@ func (h *WebhookHandler) HandleGiteaWebhook(c *gin.Context) {
 
 	var webhook model.GiteaWebhook
 	if err := c.ShouldBindJSON(&webhook); err != nil {
-		h.sendWebhookMessage(deviceKey, device, "Gitea", "Invalid Gitea webhook format", c)
+		h.sendWebhookMessage(deviceKey, device, "Gitea", "Invalid Gitea webhook format", "", c)
 		return
 	}
 
@@ -288,11 +310,11 @@ func (h *WebhookHandler) HandleGiteaWebhook(c *gin.Context) {
 	title := "Gitea"
 	body := h.formatGiteaWebhook(&webhook, eventType)
 
-	h.sendWebhookMessage(deviceKey, device, title, body, c)
+	h.sendWebhookMessage(deviceKey, device, title, body, "", c)
 }
 
 // sendWebhookMessage sends a webhook message to device
-func (h *WebhookHandler) sendWebhookMessage(deviceKey string, device *model.Device, title, body string, c *gin.Context) {
+func (h *WebhookHandler) sendWebhookMessage(deviceKey string, device *model.Device, title, body, image string, c *gin.Context) {
 	messageID := uuid.New().String()
 
 	msg := &model.Message{
@@ -301,6 +323,7 @@ func (h *WebhookHandler) sendWebhookMessage(deviceKey string, device *model.Devi
 		Title:     title,
 		Body:      body,
 		Group:     "webhook",
+		Image:     image,
 	}
 
 	// Encrypt if device has public key
@@ -312,6 +335,7 @@ func (h *WebhookHandler) sendWebhookMessage(deviceKey string, device *model.Devi
 				"title": title,
 				"body":  body,
 				"group": "webhook",
+				"image": image,
 			}
 			payloadBytes, _ := json.Marshal(payload)
 			encryptedContent, _ = h.crypto.EncryptMessage(publicKey, payloadBytes)
@@ -335,6 +359,7 @@ func (h *WebhookHandler) sendWebhookMessage(deviceKey string, device *model.Devi
 			"title":             title,
 			"body":              body,
 			"group":             "webhook",
+			"image":             image,
 			"encrypted_content": encryptedContent,
 		},
 	}
@@ -351,8 +376,25 @@ func (h *WebhookHandler) sendWebhookMessage(deviceKey string, device *model.Devi
 }
 
 // formatGitHubWebhook formats GitHub webhook into readable message
-func (h *WebhookHandler) formatGitHubWebhook(w *model.GitHubWebhook, eventType string) string {
+func (h *WebhookHandler) formatGitHubWebhook(w *model.GitHubWebhook, rawBody []byte, eventType string) string {
 	var sb strings.Builder
+
+	// Get commit message: prefer head_commit, fallback to commits[0]
+	commitMsg := w.HeadCommit.Message
+	if commitMsg == "" {
+		// Try to extract from commits array in raw JSON
+		var raw struct {
+			Commits []struct {
+				Message string `json:"message"`
+				Author  struct {
+					Name string `json:"name"`
+				} `json:"author"`
+			} `json:"commits"`
+		}
+		if json.Unmarshal(rawBody, &raw) == nil && len(raw.Commits) > 0 {
+			commitMsg = raw.Commits[0].Message
+		}
+	}
 
 	switch eventType {
 	case "push":
@@ -360,15 +402,29 @@ func (h *WebhookHandler) formatGitHubWebhook(w *model.GitHubWebhook, eventType s
 		sb.WriteString(fmt.Sprintf("【Push】%s\n", w.Repository.FullName))
 		sb.WriteString(fmt.Sprintf("分支: %s\n", branch))
 		if !w.Forced {
-			sb.WriteString(fmt.Sprintf("提交: %s\n", w.HeadCommit.Message))
+			if commitMsg != "" {
+				sb.WriteString(fmt.Sprintf("提交: %s\n", commitMsg))
+			}
 		} else {
 			sb.WriteString("强制推送\n")
 		}
 		sb.WriteString(fmt.Sprintf("推送者: %s", w.Pusher.Name))
 	case "ping":
 		sb.WriteString(fmt.Sprintf("【Ping】%s\n", w.Repository.FullName))
+	case "":
+		// No event type header - format as generic push info
+		sb.WriteString(fmt.Sprintf("【Event】%s\n", w.Repository.FullName))
+		if commitMsg != "" {
+			sb.WriteString(fmt.Sprintf("提交: %s\n", commitMsg))
+		}
+		if w.Pusher.Name != "" {
+			sb.WriteString(fmt.Sprintf("推送者: %s", w.Pusher.Name))
+		}
 	default:
 		sb.WriteString(fmt.Sprintf("【%s】%s\n", eventType, w.Repository.FullName))
+		if commitMsg != "" {
+			sb.WriteString(fmt.Sprintf("提交: %s\n", commitMsg))
+		}
 	}
 
 	return sb.String()

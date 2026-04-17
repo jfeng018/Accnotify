@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 设置镜像名称
-IMAGE_NAME="trah01/lsptify-server"
+IMAGE_NAME="trah01/accnotify-server"
 VERSION="v0.0.1-beta"
 
 echo "🚀 开始构建 x64 (amd64) 架构的 Docker 镜像..."

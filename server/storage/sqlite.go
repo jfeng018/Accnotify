@@ -57,6 +57,7 @@ func (s *SQLiteStorage) initTables() error {
 			group_name TEXT,
 			icon TEXT,
 			url TEXT,
+			image TEXT,
 			sound TEXT,
 			badge INTEGER DEFAULT 0,
 			encrypted_payload BLOB,
@@ -73,6 +74,9 @@ func (s *SQLiteStorage) initTables() error {
 			return err
 		}
 	}
+
+	// Migrate: add image column if not exists
+	s.db.Exec(`ALTER TABLE messages ADD COLUMN image TEXT`)
 
 	return nil
 }
@@ -144,9 +148,9 @@ func (s *SQLiteStorage) UpdateDeviceLastSeen(deviceKey string) error {
 // CreateMessage stores a new message
 func (s *SQLiteStorage) CreateMessage(msg *model.Message) error {
 	result, err := s.db.Exec(
-		`INSERT INTO messages (device_id, message_id, title, body, group_name, icon, url, sound, badge, encrypted_payload, created_at, delivered) 
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		msg.DeviceID, msg.MessageID, msg.Title, msg.Body, msg.Group, msg.Icon, msg.URL, msg.Sound, msg.Badge, msg.EncryptedPayload, time.Now(), false,
+		`INSERT INTO messages (device_id, message_id, title, body, group_name, icon, url, image, sound, badge, encrypted_payload, created_at, delivered) 
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		msg.DeviceID, msg.MessageID, msg.Title, msg.Body, msg.Group, msg.Icon, msg.URL, msg.Image, msg.Sound, msg.Badge, msg.EncryptedPayload, time.Now(), false,
 	)
 	if err != nil {
 		return err
@@ -172,7 +176,7 @@ func (s *SQLiteStorage) MarkMessageDelivered(messageID string) error {
 // GetUndeliveredMessages retrieves undelivered messages for a device
 func (s *SQLiteStorage) GetUndeliveredMessages(deviceID int64) ([]*model.Message, error) {
 	rows, err := s.db.Query(
-		`SELECT id, device_id, message_id, title, body, group_name, icon, url, sound, badge, encrypted_payload, created_at, delivered 
+		`SELECT id, device_id, message_id, title, body, group_name, icon, url, image, sound, badge, encrypted_payload, created_at, delivered 
 		 FROM messages 
 		 WHERE device_id = ? AND delivered = FALSE 
 		 ORDER BY created_at ASC`,
@@ -188,7 +192,7 @@ func (s *SQLiteStorage) GetUndeliveredMessages(deviceID int64) ([]*model.Message
 		msg := &model.Message{}
 		err := rows.Scan(
 			&msg.ID, &msg.DeviceID, &msg.MessageID, &msg.Title, &msg.Body,
-			&msg.Group, &msg.Icon, &msg.URL, &msg.Sound, &msg.Badge,
+			&msg.Group, &msg.Icon, &msg.URL, &msg.Image, &msg.Sound, &msg.Badge,
 			&msg.EncryptedPayload, &msg.CreatedAt, &msg.Delivered,
 		)
 		if err != nil {
@@ -203,7 +207,7 @@ func (s *SQLiteStorage) GetUndeliveredMessages(deviceID int64) ([]*model.Message
 // GetMessageHistory retrieves message history for a device
 func (s *SQLiteStorage) GetMessageHistory(deviceID int64, limit, offset int) ([]*model.Message, error) {
 	rows, err := s.db.Query(
-		`SELECT id, device_id, message_id, title, body, group_name, icon, url, sound, badge, created_at, delivered 
+		`SELECT id, device_id, message_id, title, body, group_name, icon, url, image, sound, badge, created_at, delivered 
 		 FROM messages 
 		 WHERE device_id = ? 
 		 ORDER BY created_at DESC 
@@ -220,7 +224,7 @@ func (s *SQLiteStorage) GetMessageHistory(deviceID int64, limit, offset int) ([]
 		msg := &model.Message{}
 		err := rows.Scan(
 			&msg.ID, &msg.DeviceID, &msg.MessageID, &msg.Title, &msg.Body,
-			&msg.Group, &msg.Icon, &msg.URL, &msg.Sound, &msg.Badge,
+			&msg.Group, &msg.Icon, &msg.URL, &msg.Image, &msg.Sound, &msg.Badge,
 			&msg.CreatedAt, &msg.Delivered,
 		)
 		if err != nil {

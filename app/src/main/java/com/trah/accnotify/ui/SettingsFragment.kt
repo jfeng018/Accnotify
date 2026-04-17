@@ -195,6 +195,8 @@ class SettingsFragment : Fragment() {
                 keyManager.serverUrl = url
                 Toast.makeText(context, "已切换服务器", Toast.LENGTH_SHORT).show()
                 setupServerList() // Refresh UI
+                // Restart WebSocket service to connect to new server
+                restartWebSocketService()
             }
 
             // Edit
@@ -396,6 +398,20 @@ class SettingsFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    private fun restartWebSocketService() {
+        val ctx = context ?: return
+        val intent = android.content.Intent(ctx, com.trah.accnotify.service.WebSocketService::class.java)
+        ctx.stopService(intent)
+        val startIntent = android.content.Intent(ctx, com.trah.accnotify.service.WebSocketService::class.java).apply {
+            action = com.trah.accnotify.service.WebSocketService.ACTION_CONNECT
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            ctx.startForegroundService(startIntent)
+        } else {
+            ctx.startService(startIntent)
+        }
     }
 }
 

@@ -2,106 +2,113 @@ package com.trah.accnotify.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
+import android.graphics.PixelFormat
+import android.os.Build
 import android.util.Log
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
-import com.trah.accnotify.AccnotifyApp
 
-/**
- * Minimal Accessibility Service for Background Persistence.
- *
- * Unlike GKD (which only works when screen is on), this service keeps
- * WebSocket connection alive 24/7 for push notifications.
- *
- * Keep-alive strategy:
- * 1. Fixed interval heartbeat (regardless of screen state)
- * 2. Works alongside JobService for redundancy
- * 3. Automatically restarts WebSocket service when it's not running
- */
 class KeepAliveAccessibilityService : AccessibilityService() {
 
     companion object {
-        private const val TAG = "KeepAliveService"
-        // Fixed heartbeat interval - WebSocket needs to stay connected 24/7
-        private const val HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
+        private const val TAG = "KeepAliveA11y"
 
         @Volatile
         var isServiceRunning = false
             private set
     }
 
-    private val handler = Handler(Looper.getMainLooper())
-    private var lastServiceStartTime = 0L
-
-    private val heartbeatRunnable = object : Runnable {
-        override fun run() {
-            if (isServiceRunning) {
-                Log.d(TAG, "Heartbeat: ensuring WebSocket service is alive")
-                startWebSocketServiceIfNeeded()
-                handler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
-            }
-        }
-    }
+    private var aliveView: View? = null
+    private val wm by lazy { getSystemService(WINDOW_SERVICE) as WindowManager }
 
     override fun onServiceConnected() {
-        Log.i(TAG, "Keep-alive accessibility service connected")
         super.onServiceConnected()
+        Log.i(TAG, "Accessibility service connected")
         isServiceRunning = true
 
-        // Start WebSocket service once when accessibility service starts
-        startWebSocketServiceIfNeeded()
+        // Add overlay view to keep service alive (GKD approach)
+        addAliveView()
 
-        // Schedule periodic heartbeat
-        handler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL_MS)
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return super.onStartCommand(intent, flags, startId)
+        // Start WebSocket service
+        startWebSocketService()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Minimal processing - we don't need to react to events
-        // The heartbeat mechanism handles service keep-alive
+        // Minimal - we only need notification events for keep-alive
     }
 
     override fun onInterrupt() {
-        Log.w(TAG, "Keep-alive accessibility service interrupted")
+        Log.w(TAG, "Accessibility service interrupted")
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        Log.w(TAG, "Keep-alive accessibility service unbound")
+        Log.w(TAG, "Accessibility service unbound")
         isServiceRunning = false
-        handler.removeCallbacks(heartbeatRunnable)
+        removeAliveView()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
-        Log.w(TAG, "Keep-alive accessibility service destroyed")
+        Log.w(TAG, "Accessibility service destroyed")
         isServiceRunning = false
-        handler.removeCallbacks(heartbeatRunnable)
+        removeAliveView()
         super.onDestroy()
     }
 
-    private fun startWebSocketServiceIfNeeded() {
-        val now = System.currentTimeMillis()
-        // Throttle service starts to at most once per minute
-        if (now - lastServiceStartTime < 60_000L) {
-            return
+    /**
+     * Add a 1x1 pixel invisible overlay view using TYPE_ACCESSIBILITY_OVERLAY.
+     * This is the key keep-alive mechanism from GKD - the system considers the
+     * service as actively using a window, making it much harder to be killed.
+     */
+    private fun addAliveView() {
+        removeAliveView()
+        try {
+            val view = View(this)
+            val lp = WindowManager.LayoutParams().apply {
+                type = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                format = PixelFormat.TRANSLUCENT
+                flags = flags or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                gravity = Gravity.START or Gravity.TOP
+                width = 1
+                height = 1
+                packageName = this@KeepAliveAccessibilityService.packageName
+            }
+            wm.addView(view, lp)
+            aliveView = view
+            Log.i(TAG, "Alive overlay view added")
+        } catch (e: Exception) {
+            aliveView = null
+            Log.e(TAG, "Failed to add alive overlay view", e)
         }
-        lastServiceStartTime = now
+    }
 
+    private fun removeAliveView() {
+        aliveView?.let {
+            try {
+                wm.removeView(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to remove alive overlay view", e)
+            }
+        }
+        aliveView = null
+    }
+
+    private fun startWebSocketService() {
         val intent = Intent(this, WebSocketService::class.java).apply {
             action = WebSocketService.ACTION_CONNECT
         }
         try {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
             } else {
                 startService(intent)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start WebSocketService: ${e.message}")
+            Log.e(TAG, "Failed to start WebSocket service", e)
         }
     }
 }

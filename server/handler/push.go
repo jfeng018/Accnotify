@@ -78,6 +78,7 @@ func (h *PushHandler) HandlePush(c *gin.Context) {
 		Group:     req.Group,
 		Icon:      req.Icon,
 		URL:       req.URL,
+		Image:     req.Image,
 		Sound:     req.Sound,
 		Badge:     req.Badge,
 	}
@@ -94,6 +95,7 @@ func (h *PushHandler) HandlePush(c *gin.Context) {
 				"group": req.Group,
 				"icon":  req.Icon,
 				"url":   req.URL,
+				"image": req.Image,
 				"sound": req.Sound,
 				"badge": req.Badge,
 			}
@@ -123,6 +125,7 @@ func (h *PushHandler) HandlePush(c *gin.Context) {
 			"group":             req.Group,
 			"icon":              req.Icon,
 			"url":               req.URL,
+			"image":             req.Image,
 			"sound":             req.Sound,
 			"badge":             req.Badge,
 			"encrypted_content": encryptedContent,

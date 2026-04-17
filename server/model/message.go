@@ -24,6 +24,7 @@ type Message struct {
 	Group            string    `json:"group,omitempty"`
 	Icon             string    `json:"icon,omitempty"`
 	URL              string    `json:"url,omitempty"`
+	Image            string    `json:"image,omitempty"`
 	Sound            string    `json:"sound,omitempty"`
 	Badge            int       `json:"badge,omitempty"`
 	EncryptedPayload []byte    `json:"-"`
@@ -38,6 +39,7 @@ type PushRequest struct {
 	Group            string `json:"group,omitempty"`
 	Icon             string `json:"icon,omitempty"`
 	URL              string `json:"url,omitempty"`
+	Image            string `json:"image,omitempty"`
 	Sound            string `json:"sound,omitempty"`
 	Badge            int    `json:"badge,omitempty"`
 	EncryptedContent string `json:"encrypted_content,omitempty"`

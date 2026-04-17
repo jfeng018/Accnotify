@@ -21,6 +21,8 @@ import com.trah.accnotify.data.Message
 import com.trah.accnotify.R
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import io.noties.markwon.Markwon
+import io.noties.markwon.SoftBreakAddsNewLinePlugin
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -143,9 +145,12 @@ class MessagesFragment : Fragment() {
         tvTitle.text = message.title ?: "Accnotify"
         tvTime.text = dateFormat.format(message.timestamp)
         
-        // 格式化消息内容
-        val bodyText = formatMessageBody(message.body ?: "")
-        tvBody.text = bodyText
+        // 格式化消息内容（使用 Markwon 渲染 Markdown，启用 SoftBreak 保留换行）
+        val markwon = Markwon.builder(requireContext())
+            .usePlugin(SoftBreakAddsNewLinePlugin.create())
+            .build()
+        val markdown = formatMessageBodyAsMarkdown(message.body ?: "")
+        markwon.setMarkdown(tvBody, markdown)
         
         // 设置滚动区域最大高度为屏幕高度的 50%
         val displayMetrics = resources.displayMetrics
@@ -155,6 +160,39 @@ class MessagesFragment : Fragment() {
                 val params = scrollBody.layoutParams
                 params.height = maxHeight
                 scrollBody.layoutParams = params
+            }
+        }
+
+        // Display base64 image if present
+        if (!message.image.isNullOrEmpty()) {
+            try {
+                // Strip data URI prefix if present (e.g. "data:image/png;base64,...")
+                val base64Data = if (message.image!!.contains(",")) {
+                    message.image.substringAfter(",")
+                } else {
+                    message.image
+                }
+                val imageBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT)
+                val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                if (bitmap != null) {
+                    val imageView = android.widget.ImageView(requireContext()).apply {
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            topMargin = (12 * resources.displayMetrics.density).toInt()
+                        }
+                        adjustViewBounds = true
+                        setImageBitmap(bitmap)
+                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                    }
+                    val frameLayout = scrollBody.parent as FrameLayout
+                    val parentLayout = frameLayout.parent as android.widget.LinearLayout
+                    val index = parentLayout.indexOfChild(frameLayout)
+                    parentLayout.addView(imageView, index + 1)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MessagesFragment", "Failed to decode image", e)
             }
         }
 
@@ -177,24 +215,96 @@ class MessagesFragment : Fragment() {
     }
 
     /**
-     * 格式化消息正文 - 尝试美化 JSON 或保持原样
+     * 将消息正文转换为 Markdown 格式
      */
-    private fun formatMessageBody(body: String): String {
-        // 尝试检测是否是 JSON 并格式化
+    private fun formatMessageBodyAsMarkdown(body: String): String {
         val trimmed = body.trim()
+
+        // 处理包含 "--- 完整数据 ---" 分隔符的消息
+        val separatorIndex = trimmed.indexOf("--- 完整数据 ---")
+        if (separatorIndex > 0) {
+            val summary = trimmed.substring(0, separatorIndex).trim()
+            val fullData = trimmed.substring(separatorIndex + "--- 完整数据 ---".length).trim()
+            val summaryMd = jsonToReadableMarkdown(summary)
+            return summaryMd + "\n\n---\n\n<details>\n<summary>完整数据</summary>\n\n```\n$fullData\n```\n</details>"
+        }
+
+        // JSON 对象或数组
         if ((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
             (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-            return try {
-                val gson = com.google.gson.GsonBuilder()
-                    .setPrettyPrinting()
-                    .create()
-                val jsonElement = com.google.gson.JsonParser.parseString(trimmed)
-                gson.toJson(jsonElement)
-            } catch (e: Exception) {
-                body
-            }
+            return jsonToReadableMarkdown(trimmed)
         }
+
         return body
+    }
+
+    /**
+     * 将 JSON 字符串转换为可读的 Markdown 文本
+     */
+    private fun jsonToReadableMarkdown(text: String, indent: Int = 0): String {
+        val trimmed = text.trim()
+        if (!((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+              (trimmed.startsWith("[") && trimmed.endsWith("]")))) {
+            return text
+        }
+        return try {
+            val element = com.google.gson.JsonParser.parseString(trimmed)
+            val sb = StringBuilder()
+            renderJsonElement(element, sb, indent)
+            sb.toString().trimEnd()
+        } catch (e: Exception) {
+            text
+        }
+    }
+
+    private fun renderJsonElement(element: com.google.gson.JsonElement, sb: StringBuilder, indent: Int) {
+        val prefix = "  ".repeat(indent)
+        when {
+            element.isJsonObject -> {
+                val obj = element.asJsonObject
+                for ((key, value) in obj.entrySet()) {
+                    when {
+                        value.isJsonPrimitive || value.isJsonNull -> {
+                            sb.appendLine("${prefix}**$key**: ${value.asJsonPrimitiveText()}")
+                        }
+                        value.isJsonObject -> {
+                            sb.appendLine("${prefix}**$key**:")
+                            renderJsonElement(value, sb, indent + 1)
+                        }
+                        value.isJsonArray -> {
+                            sb.appendLine("${prefix}**$key**:")
+                            renderJsonElement(value, sb, indent + 1)
+                        }
+                    }
+                }
+            }
+            element.isJsonArray -> {
+                val arr = element.asJsonArray
+                arr.forEachIndexed { index, item ->
+                    when {
+                        item.isJsonPrimitive || item.isJsonNull -> {
+                            sb.appendLine("${prefix}${index + 1}. ${item.asJsonPrimitiveText()}")
+                        }
+                        else -> {
+                            sb.appendLine("${prefix}${index + 1}.")
+                            renderJsonElement(item, sb, indent + 1)
+                        }
+                    }
+                }
+            }
+            else -> sb.appendLine("$prefix${element.asJsonPrimitiveText()}")
+        }
+    }
+
+    private fun com.google.gson.JsonElement.asJsonPrimitiveText(): String {
+        return when {
+            isJsonNull -> "null"
+            isJsonPrimitive -> {
+                val p = asJsonPrimitive
+                if (p.isString) p.asString else p.toString()
+            }
+            else -> toString()
+        }
     }
 
     /**

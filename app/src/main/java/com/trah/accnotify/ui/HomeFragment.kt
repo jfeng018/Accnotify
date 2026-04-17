@@ -79,6 +79,14 @@ class HomeFragment : Fragment() {
         updateDeviceInfo()
     }
 
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (!hidden) {
+            // Refresh device info when fragment becomes visible (e.g. after switching server in Settings)
+            updateDeviceInfo()
+        }
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         requireContext().unregisterReceiver(connectionReceiver)

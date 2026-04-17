@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  accnotify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: accnotify-server
+    ports:
+      - "8080:8080"
+    volumes:
+      - accnotify-data:/app/data
+    environment:
+      - ACCNOTIFY_HOST=0.0.0.0
+      - ACCNOTIFY_PORT=8080
+      - ACCNOTIFY_DB_PATH=/app/data/accnotify.db
+      - ACCNOTIFY_WS_PING_INTERVAL=30
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  accnotify-data:
+    driver: local

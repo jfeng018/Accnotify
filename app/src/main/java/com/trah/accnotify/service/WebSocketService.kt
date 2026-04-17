@@ -1,6 +1,5 @@
 package com.trah.accnotify.service
 
-import android.app.AlarmManager
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
@@ -13,7 +12,6 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
-import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.gson.Gson
@@ -37,12 +35,9 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.Date
 import java.util.concurrent.TimeUnit
-import android.net.wifi.WifiManager
 import android.app.NotificationManager
 import android.provider.Settings
 import android.text.TextUtils
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 class WebSocketService : Service() {
 
@@ -62,13 +57,6 @@ class WebSocketService : Service() {
     // WakeLock to keep CPU awake during critical operations (not persistent)
     private var wakeLock: PowerManager.WakeLock? = null
     private val wakeLockTimeout = 30_000L // 30 seconds max for message processing
-    
-    // Persistent WakeLock for maintaining WebSocket connection
-    private var connectionWakeLock: PowerManager.WakeLock? = null
-    private val connectionWakeLockTimeout = 2 * 60 * 1000L // 2 minutes, refreshed by keep-alive
-    
-    // WiFi Lock to prevent WiFi from sleeping
-    private var wifiLock: WifiManager.WifiLock? = null
     
     // Notification update
     private var lastMessageTime: Long = 0L
@@ -98,26 +86,25 @@ class WebSocketService : Service() {
         val app = application as AccnotifyApp
         isForegroundMode = app.keyManager.showForegroundNotification
 
-        // Acquire connection WakeLock and WiFi Lock for stable connection
-        acquireConnectionWakeLock()
-        acquireWifiLock()
-
         // Register network callback
         registerNetworkCallback()
 
-        // Start as foreground service if enabled
-        if (isForegroundMode) {
-            startForeground(NOTIFICATION_ID, createForegroundNotification())
-            Log.i(TAG, "Service started in foreground mode (with notification)")
-        } else {
+        // Must always call startForeground() when started via startForegroundService(),
+        // otherwise Android O+ will crash the app after 5 seconds.
+        startForeground(NOTIFICATION_ID, createForegroundNotification())
+        if (!isForegroundMode) {
+            // User opted out of the persistent notification — remove it immediately
+            // while keeping the service alive.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
             Log.i(TAG, "Service started in background mode (without notification)")
+        } else {
+            Log.i(TAG, "Service started in foreground mode (with notification)")
         }
-
-        // Schedule keep-alive alarm (3 minutes - balanced between battery and reliability)
-        scheduleKeepAliveAlarm()
-
-        // Schedule JobService as backup keep-alive mechanism
-        KeepAliveJobService.schedule(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -130,30 +117,10 @@ class WebSocketService : Service() {
                 val messageId = intent.getStringExtra(EXTRA_MESSAGE_ID)
                 messageId?.let { sendAck(it) }
             }
-            ACTION_KEEP_ALIVE -> {
-                // Refresh WakeLock to maintain connection
-                refreshConnectionWakeLock()
-                
-                // Check and reconnect if needed
-                if (!isConnected) {
-                    Log.i(TAG, "Keep-alive: reconnecting...")
-                    connect()
-                } else {
-                    // Send ping to keep connection alive
-                    sendPong()
-                }
-                
-                // Update notification with current status
-                updateForegroundNotification()
-                
-                scheduleKeepAliveAlarm()
-            }
-            ACTION_RESTART_SERVICE -> {
-                // Service restart request
-                Log.i(TAG, "Restart service requested")
-                if (!isConnected) {
-                    connect()
-                }
+            null -> {
+                // Service restarted by system (START_STICKY), auto-reconnect
+                Log.i(TAG, "Service restarted by system, auto-connecting")
+                connect()
             }
         }
         
@@ -165,34 +132,22 @@ class WebSocketService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        Log.w(TAG, "Service onDestroy - attempting restart")
-        
-        // Cancel alarms
-        cancelKeepAliveAlarm()
+        Log.w(TAG, "Service onDestroy")
         
         // Unregister network callback
         unregisterNetworkCallback()
         
-        // Release all locks
-        releaseConnectionWakeLock()
-        releaseWifiLock()
+        // Release WakeLock
         releaseWakeLock()
         
         disconnect()
         scope.cancel()
-        
-        // Try to restart the service
-        scheduleServiceRestart()
         
         super.onDestroy()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.w(TAG, "onTaskRemoved - app was swiped away")
-        
-        // Schedule restart when task is removed (user swipes away)
-        scheduleServiceRestart()
-        
         super.onTaskRemoved(rootIntent)
     }
 
@@ -231,90 +186,6 @@ class WebSocketService : Service() {
         }
     }
     
-    /**
-     * Acquire a persistent WakeLock for maintaining WebSocket connection.
-     * This is refreshed by the keep-alive alarm every 3 minutes.
-     */
-    private fun acquireConnectionWakeLock() {
-        try {
-            if (connectionWakeLock == null) {
-                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-                connectionWakeLock = powerManager.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK,
-                    "$TAG::ConnectionWakeLock"
-                ).apply {
-                    setReferenceCounted(false)
-                }
-            }
-            connectionWakeLock?.acquire(connectionWakeLockTimeout)
-            Log.i(TAG, "Connection WakeLock acquired for ${connectionWakeLockTimeout / 1000}s")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to acquire connection WakeLock", e)
-        }
-    }
-    
-    private fun refreshConnectionWakeLock() {
-        try {
-            connectionWakeLock?.let {
-                if (it.isHeld) {
-                    it.release()
-                }
-            }
-            connectionWakeLock?.acquire(connectionWakeLockTimeout)
-            Log.d(TAG, "Connection WakeLock refreshed")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to refresh connection WakeLock", e)
-        }
-    }
-    
-    private fun releaseConnectionWakeLock() {
-        try {
-            connectionWakeLock?.let {
-                if (it.isHeld) {
-                    it.release()
-                    Log.i(TAG, "Connection WakeLock released")
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to release connection WakeLock", e)
-        }
-        connectionWakeLock = null
-    }
-    
-    /**
-     * Acquire WiFi Lock to prevent WiFi from entering power-saving mode.
-     */
-    @Suppress("DEPRECATION")
-    private fun acquireWifiLock() {
-        try {
-            if (wifiLock == null) {
-                val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-                wifiLock = wifiManager.createWifiLock(
-                    WifiManager.WIFI_MODE_FULL,
-                    "$TAG::WifiLock"
-                )
-            }
-            wifiLock?.acquire()
-            Log.i(TAG, "WiFi Lock acquired")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to acquire WiFi Lock", e)
-        }
-    }
-    
-    private fun releaseWifiLock() {
-        try {
-            wifiLock?.let {
-                if (it.isHeld) {
-                    it.release()
-                    Log.i(TAG, "WiFi Lock released")
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to release WiFi Lock", e)
-        }
-        wifiLock = null
-    }
-
     private fun registerNetworkCallback() {
         val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         
@@ -361,92 +232,6 @@ class WebSocketService : Service() {
             }
         }
         networkCallback = null
-    }
-
-    private fun scheduleKeepAliveAlarm() {
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(this, WebSocketService::class.java).apply {
-            action = ACTION_KEEP_ALIVE
-        }
-        val pendingIntent = PendingIntent.getService(
-            this,
-            KEEP_ALIVE_REQUEST_CODE,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        // Schedule alarm every 3 minutes (balanced between battery and reliability)
-        // This also refreshes the WakeLock
-        val intervalMs = 3 * 60 * 1000L
-        val triggerAtMs = SystemClock.elapsedRealtime() + intervalMs
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                // Use setExactAndAllowWhileIdle for Doze compatibility
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAtMs,
-                    pendingIntent
-                )
-            } else {
-                alarmManager.setExact(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAtMs,
-                    pendingIntent
-                )
-            }
-            Log.i(TAG, "Keep-alive alarm scheduled for ${intervalMs / 1000}s")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to schedule keep-alive alarm", e)
-        }
-    }
-
-    private fun cancelKeepAliveAlarm() {
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(this, WebSocketService::class.java).apply {
-            action = ACTION_KEEP_ALIVE
-        }
-        val pendingIntent = PendingIntent.getService(
-            this,
-            KEEP_ALIVE_REQUEST_CODE,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.cancel(pendingIntent)
-    }
-
-    private fun scheduleServiceRestart() {
-        val intent = Intent(this, WebSocketService::class.java).apply {
-            action = ACTION_RESTART_SERVICE
-        }
-        val pendingIntent = PendingIntent.getService(
-            this,
-            RESTART_REQUEST_CODE,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val triggerAtMs = SystemClock.elapsedRealtime() + 5000 // 5 seconds delay
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAtMs,
-                    pendingIntent
-                )
-            } else {
-                alarmManager.setExact(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAtMs,
-                    pendingIntent
-                )
-            }
-            Log.i(TAG, "Service restart scheduled for 5 seconds")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to schedule service restart", e)
-        }
     }
 
     private fun connect() {
@@ -617,6 +402,7 @@ class WebSocketService : Service() {
         val group = data.get("group")?.asString
         val icon = data.get("icon")?.asString
         val url = data.get("url")?.asString
+        var image = data.get("image")?.asString
         val sound = data.get("sound")?.asString
         val badge = data.get("badge")?.asInt ?: 0
         val encryptedContent = data.get("encrypted_content")?.asString
@@ -633,6 +419,7 @@ class WebSocketService : Service() {
                     val decrypted = gson.fromJson(decryptedContent, JsonObject::class.java)
                     title = decrypted.get("title")?.asString ?: title
                     body = decrypted.get("body")?.asString ?: body
+                    image = decrypted.get("image")?.asString ?: image
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing decrypted content", e)
                 }
@@ -648,6 +435,7 @@ class WebSocketService : Service() {
                 group = group,
                 icon = icon,
                 url = url,
+                image = image,
                 sound = sound,
                 badge = badge,
                 encryptedContent = encryptedContent,
@@ -770,15 +558,11 @@ class WebSocketService : Service() {
     companion object {
         private const val TAG = "WebSocketService"
         private const val NOTIFICATION_ID = 1
-        private const val KEEP_ALIVE_REQUEST_CODE = 1001
-        private const val RESTART_REQUEST_CODE = 1002
 
         const val ACTION_CONNECT = "com.trah.accnotify.action.CONNECT"
         const val ACTION_DISCONNECT = "com.trah.accnotify.action.DISCONNECT"
         const val ACTION_SEND_ACK = "com.trah.accnotify.action.SEND_ACK"
         const val ACTION_CONNECTION_STATUS = "com.trah.accnotify.action.CONNECTION_STATUS"
-        const val ACTION_KEEP_ALIVE = "com.trah.accnotify.action.KEEP_ALIVE"
-        const val ACTION_RESTART_SERVICE = "com.trah.accnotify.action.RESTART_SERVICE"
 
         const val EXTRA_MESSAGE_ID = "message_id"
         const val EXTRA_CONNECTED = "connected"

@@ -35,15 +35,24 @@ class AccnotifyApp : Application() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-            // Service notification channel (minimum priority, can be hidden by user)
+            // Delete old channel if it exists with wrong importance (IMPORTANCE_MIN)
+            // Channel importance can't be programmatically increased after creation,
+            // so we need to delete and recreate it.
+            notificationManager.deleteNotificationChannel(CHANNEL_SERVICE)
+
+            // Service notification channel (low priority - shows icon but no sound)
+            // Using IMPORTANCE_LOW instead of IMPORTANCE_MIN so Android treats the
+            // foreground service as important enough to maintain network connections.
             val serviceChannel = NotificationChannel(
                 CHANNEL_SERVICE,
                 getString(R.string.notification_channel_name),
-                NotificationManager.IMPORTANCE_MIN  // 最低优先级，尽量不打扰用户
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = getString(R.string.notification_channel_description)
                 setShowBadge(false)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET  // 锁屏不显示
+                setSound(null, null)
+                enableVibration(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_SECRET
             }
             notificationManager.createNotificationChannel(serviceChannel)
 
