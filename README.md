@@ -41,6 +41,10 @@ go build -o accnotify-server
    - 通知权限
 5. 复制推送地址或设备密钥，开始发送消息
 
+## 推送测试 
+
+可以使用项目的[test-push.html](https://github.com/trah01/Accnotify/blob/main/test-push.html)进行快速测试，验证服务器和客户端，在网页填入服务器地址和key即可
+
 ## 推送示例
 
 ### 基本文本推送
