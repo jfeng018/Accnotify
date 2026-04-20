@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeNotificationStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagDefault"
     android:canRetrieveWindowContent="false"
-    android:notificationTimeout="100"
+    android:canPerformGestures="false"
+    android:notificationTimeout="300"
     android:settingsActivity="com.trah.accnotify.ui.MainActivity"
     android:description="@string/accessibility_description"
     tools:ignore="UnusedAttribute" />

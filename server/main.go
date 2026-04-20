@@ -57,6 +57,7 @@ func main() {
 	router.GET("/health", pushHandler.HandleHealth)
 	router.POST("/register", pushHandler.HandleRegister)
 	router.POST("/push/:device_key", pushHandler.HandlePush)
+	router.GET("/push/:device_key", pushHandler.HandlePush)
 	router.GET("/push/:device_key/*params", handleSimplePushParams(pushHandler))
 	router.GET("/ws", func(c *gin.Context) {
 		wsHandler.HandleConnect(c.Writer, c.Request)
